@@ -1,0 +1,265 @@
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
+import { requireAuth } from '../../middleware/require-auth.js';
+import type { AppEnv } from '../../types/app-env.js';
+import { ErrorResponseSchema } from '../auth/auth.schemas.js';
+import {
+  CreateLeaseSchema,
+  LeaseIdParamSchema,
+  LeaseListQuerySchema,
+  LeaseListSchema,
+  LeaseSchema,
+  UpdateLeaseSchema,
+  UpdateLeaseStatusSchema,
+} from './leases.schemas.js';
+import {
+  create,
+  getByIdForOwner,
+  listByOwner,
+  remove,
+  update,
+  updateStatus,
+} from './leases.service.js';
+
+const TAG = 'leases';
+
+const listRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: [TAG],
+  summary: 'Lister les baux du bailleur courant',
+  request: {
+    query: LeaseListQuerySchema,
+  },
+  responses: {
+    200: {
+      description: 'Liste des baux',
+      content: { 'application/json': { schema: LeaseListSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const createRouteDef = createRoute({
+  method: 'post',
+  path: '/',
+  tags: [TAG],
+  summary: 'Créer un bail',
+  request: {
+    body: {
+      content: { 'application/json': { schema: CreateLeaseSchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: 'Bail créé',
+      content: { 'application/json': { schema: LeaseSchema } },
+    },
+    400: {
+      description: 'Requête invalide',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Ressource liée introuvable (propriété)',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const getOneRoute = createRoute({
+  method: 'get',
+  path: '/{id}',
+  tags: [TAG],
+  summary: 'Récupérer un bail par son identifiant',
+  request: {
+    params: LeaseIdParamSchema,
+  },
+  responses: {
+    200: {
+      description: 'Bail',
+      content: { 'application/json': { schema: LeaseSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Bail introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const updateRoute = createRoute({
+  method: 'put',
+  path: '/{id}',
+  tags: [TAG],
+  summary: 'Mettre à jour un bail (remplacement complet, propriété immuable)',
+  request: {
+    params: LeaseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: UpdateLeaseSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Bail mis à jour',
+      content: { 'application/json': { schema: LeaseSchema } },
+    },
+    400: {
+      description: 'Requête invalide',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Bail introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const updateStatusRoute = createRoute({
+  method: 'patch',
+  path: '/{id}/status',
+  tags: [TAG],
+  summary: 'Transitionner le statut d’un bail (draft → active → ended)',
+  request: {
+    params: LeaseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: UpdateLeaseStatusSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Bail mis à jour',
+      content: { 'application/json': { schema: LeaseSchema } },
+    },
+    400: {
+      description: 'Transition de statut invalide',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Bail introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const deleteRoute = createRoute({
+  method: 'delete',
+  path: '/{id}',
+  tags: [TAG],
+  summary: 'Supprimer un bail (uniquement à l’état draft)',
+  request: {
+    params: LeaseIdParamSchema,
+  },
+  responses: {
+    204: { description: 'Bail supprimé' },
+    400: {
+      description: 'Bail non supprimable (statut différent de "draft")',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Bail introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+export const leasesRoutes = new OpenAPIHono<AppEnv>();
+
+leasesRoutes.use('*', requireAuth);
+
+leasesRoutes.use('*', async (c, next) => {
+  const user = c.get('user');
+  if (!user || user.role !== 'landlord') {
+    throw new HTTPException(403, { message: 'Accès refusé' });
+  }
+  await next();
+});
+
+leasesRoutes.openapi(listRoute, async (c) => {
+  const user = c.get('user')!;
+  const { status } = c.req.valid('query');
+  const rows = await listByOwner(user.id, status);
+  return c.json(rows, 200);
+});
+
+leasesRoutes.openapi(createRouteDef, async (c) => {
+  const user = c.get('user')!;
+  const data = c.req.valid('json');
+  const row = await create(user.id, data);
+  return c.json(row, 201);
+});
+
+leasesRoutes.openapi(getOneRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  const row = await getByIdForOwner(id, user.id);
+  return c.json(row, 200);
+});
+
+leasesRoutes.openapi(updateRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  const data = c.req.valid('json');
+  const row = await update(id, user.id, data);
+  return c.json(row, 200);
+});
+
+leasesRoutes.openapi(updateStatusRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  const { statusKey } = c.req.valid('json');
+  const row = await updateStatus(id, user.id, statusKey);
+  return c.json(row, 200);
+});
+
+leasesRoutes.openapi(deleteRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  await remove(id, user.id);
+  return c.body(null, 204);
+});

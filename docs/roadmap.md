@@ -82,6 +82,63 @@ Mise à jour : 2026-05-30.
 - [ ] Page Garants : liste + formulaire CRUD (person/organization) + bouton "Inviter"
 - [ ] Page Baux : wizard 4 étapes (bien → locataires → garants → conditions) avec sauvegarde draft à chaque étape
 
+#### Workflow de signature retenu pour V1 — signature physique scannée
+
+**Décision** : pas d'e-signature qualifiée (Yousign / DocuSign / etc.) en V1. Trop coûteux en effort et complexité pour le volume actuel. À reconsidérer en V2 si volume ≥ 5 baux/an.
+
+**Workflow** :
+1. Bailleur génère le PDF du bail **sans signatures** depuis l'app
+2. Bail imprimé → signé physiquement par toutes les parties sur un **papier blanc séparé**
+3. Bailleur scanne les signatures
+4. Upload des images de signatures dans l'app → backend compose visuellement le PDF final du bail
+5. Le PDF composé est stocké dans `documents` avec un watermark explicite
+
+**Schéma `leases` — champs liés à la signature** :
+```
++ signature_method_key       -- 'handwritten_scanned' (V1, valeur fixe)
++ original_paper_archived    -- bool, default true (reminder/audit, le bailleur confirme l'archivage papier)
+```
+
+**4 règles non-négociables** (à respecter au niveau process et code) :
+1. **Conserver les originaux papier** ≥ 5 ans après la fin du bail (prescription quinquennale)
+2. **Ne JAMAIS persister les images isolées** des signatures locataire/garant côté serveur. Workflow strict côté backend : upload → composition PDF → suppression immédiate des images source. Seule la signature du **bailleur** est persistée (`landlord_profiles.signature_file_path`), parce qu'il consent à sa conservation
+3. **Watermark obligatoire** sur le PDF composé : *"Reproduction numérique d'un bail signé sur support papier le JJ/MM/AAAA — original conservé par le bailleur"*. Désamorce toute confusion juridique avec une vraie e-signature
+4. **Audit trail dans `documents`** : `uploaded_by_user_id`, `created_at`, IP (déjà prévu sur `sessions`)
+
+---
+
+### Milestone 2.5 — Hardening backend (à faire **avant** Milestone 7 / déploiement prod)
+
+> Liste issue de la revue critique post-M2 (2026-05-30). Items techniques et sécurité à corriger ou consciemment accepter avant toute mise en production.
+
+#### 🔴 Risques à corriger absolument avant prod
+
+- [ ] **R1 — Race condition `accept-invitation`** : ajouter `isNull(invitations.usedAt)` dans le WHERE de l'UPDATE et vérifier `rowcount === 1` ; sinon deux requêtes simultanées avec le même token peuvent toutes les deux créer un compte. (REPEATABLE READ ou SELECT FOR UPDATE en alternative.)
+- [ ] **R2 — Email duplicate → 409 propre** : try/catch sur l'INSERT user dans `accept-invitation`, détecter le code Postgres `23505` (unique_violation) et renvoyer 409 typé au lieu d'un 500 cryptique.
+- [ ] **R3 — FK polymorphique `invitations.target_id`** : refactor en `target_tenant_id` + `target_guarantor_id` avec CHECK XOR + ON DELETE CASCADE, ou consciemment laisser et nettoyer les orphelines via un cron.
+- [ ] **R4 — Migration PUT → PATCH** (5 modules : landlord-profiles, properties, tenants, guarantors, leases) :
+  - Sémantique : **JSON Merge Patch (RFC 7396)**
+  - Champ absent → pas touché ; champ présent à `null` → set NULL ; champ présent non-null → update
+  - Tous les champs `.optional()` dans les schemas Zod d'update
+  - Drizzle `.set(dataObj)` ne met à jour que les colonnes présentes
+  - À documenter clairement dans la spec OpenAPI
+- [ ] **R5 — Lease status : rollback contrôlé** : ajouter une transition `active → draft` autorisée pendant N heures après le passage en active (typo, erreur de saisie). Au-delà, verrouillé. Ou alternativement : autoriser un PATCH partiel sur lease même en `active` pour les champs non-structurants (loyer, charges) avec audit log.
+
+#### 🟡 Améliorations sécurité / robustesse prod
+
+- [ ] **P3 — Mailer prod-safe** : `if (env.NODE_ENV === 'production' && !env.SMTP_HOST) throw` au boot. Sinon une invitation envoyée en prod = silence, le bailleur ne sait pas que rien n'est parti.
+- [ ] **P4 — Token d'invitation non-exposé en prod** : `POST /api/invitations` retourne `{ expiresAt }` uniquement en production, jamais `token`. Le token ne doit transiter que par email.
+- [ ] **P5 — Audit log** : table `audit_logs(id, user_id, action, entity_type, entity_id, payload jsonb, ip, user_agent, created_at)`. Middleware qui enregistre les actions sensibles (login, lease.create, lease.status.change, document.validate, invitation.accept, payment.confirm).
+- [ ] **P6 — Rate limiting** : middleware sur `/api/auth/login` (5 tentatives / 15min par IP), `/api/invitations/accept` (10 tentatives / heure par IP), `/api/invitations` (50 / jour par bailleur). Lib type `hono-rate-limiter` ou implémentation maison Redis-less.
+- [ ] **Helmet-like headers** : `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`.
+- [ ] **Validation taille body** : middleware qui rejette `Content-Length > 20 Mo` au niveau Hono (en plus de nginx).
+
+#### 🟢 Améliorations non bloquantes (à programmer post-MVP)
+
+- [ ] **P1 — N+1 sur `GET /api/leases`** : passer à un INNER JOIN global + map en mémoire quand on dépassera 50 baux/bailleur.
+- [ ] **P2 — Consistency pass sur les middlewares de rôle** : harmoniser entre les 6 modules (certains utilisent `requireRole`, d'autres inlinent le check). Lance un agent dédié pour normaliser.
+- [ ] **Junction update diff** : dans `leases.update`, diffuser les sets tenant/guarantor au lieu de delete-then-insert systématique (économise des writes inutiles).
+
 ---
 
 ### Milestone 3 — Documents + upload + partage
@@ -180,9 +237,11 @@ Mise à jour : 2026-05-30.
    - GitHub Container Registry (`ghcr.io/jarzur-dev-ui/gestion-locative-api`)
    - GitLab Container Registry (`registry.gitlab.exanders.fr/infrajo/gestion-locative-api`)
    - Docker Hub
-3. **Domaine API**
-   - Sous-domaine séparé : `api.zeleph.fr` → backend, `gestion.zeleph.fr` → front
-   - Path : `gestion.zeleph.fr/api/*` → backend (plus simple côté cookies/CORS, recommandé)
+3. **Domaine API** ✅ Décidé : **`api.gestion-locative.zeleph.fr`**
+   - Front : `https://gestion-locative.zeleph.fr`
+   - API : `https://api.gestion-locative.zeleph.fr`
+   - Cookie domain : `.gestion-locative.zeleph.fr` (autorise les 2 sous-domaines)
+   - CORS_ORIGIN : `https://gestion-locative.zeleph.fr`
 4. **CI primaire** (lint + typecheck + build + push image)
    - GitHub Actions
    - GitLab CI

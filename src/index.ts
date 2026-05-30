@@ -6,6 +6,12 @@ import { logger } from './lib/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { sessionMiddleware } from './middleware/session.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { guarantorsRoutes } from './modules/guarantors/guarantors.routes.js';
+import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
+import { landlordProfilesRoutes } from './modules/landlord-profiles/landlord-profiles.routes.js';
+import { leasesRoutes } from './modules/leases/leases.routes.js';
+import { propertiesRoutes } from './modules/properties/properties.routes.js';
+import { tenantsRoutes } from './modules/tenants/tenants.routes.js';
 import type { AppEnv } from './types/app-env.js';
 
 const app = new OpenAPIHono<AppEnv>();
@@ -44,6 +50,12 @@ app.openapi(healthRoute, (c) =>
 );
 
 app.route('/api/auth', authRoutes);
+app.route('/api/landlord-profile', landlordProfilesRoutes);
+app.route('/api/properties', propertiesRoutes);
+app.route('/api/tenants', tenantsRoutes);
+app.route('/api/guarantors', guarantorsRoutes);
+app.route('/api/leases', leasesRoutes);
+app.route('/api/invitations', invitationsRoutes);
 
 app.doc('/openapi.json', {
   openapi: '3.0.0',
