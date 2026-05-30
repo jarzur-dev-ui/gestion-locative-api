@@ -7,7 +7,7 @@ import type {
   CreateGuarantorInput,
   GuarantorPublic,
   GuarantorTypeKey,
-  UpdateGuarantorInput,
+  PatchGuarantorInput,
 } from './guarantors.schemas.js';
 
 export async function listByCreator(
@@ -100,10 +100,26 @@ export async function getByIdForCreator(
   return row;
 }
 
-export async function update(
+/**
+ * PATCH (JSON Merge Patch, RFC 7396) :
+ * - Clé absente → ne touche pas la colonne
+ * - Clé à `null` → set la colonne à NULL
+ * - Clé avec valeur → update la colonne
+ *
+ * Règles métier :
+ * - `guarantorTypeKey` est IMMUTABLE via PATCH : si fourni et différent de la
+ *   valeur existante, on rejette en 400. Pour un switch person↔organization,
+ *   passer par delete + recreate.
+ * - Les champs cross-type (ex. patcher `lastName` sur un garant `organization`)
+ *   sont laissés à la responsabilité du caller : la DB reste cohérente tant
+ *   que le CHECK SQL est respecté (le caller peut techniquement écrire un
+ *   `lastName` sur une organisation — on ne l'interdit pas explicitement ici
+ *   car ça ne casse pas la contrainte CHECK).
+ */
+export async function patch(
   id: string,
   creatorUserId: string,
-  data: UpdateGuarantorInput,
+  data: PatchGuarantorInput,
 ): Promise<Guarantor> {
   // Pré-check d'ownership + récupère la ligne pour comparer le type.
   const existing = await getByIdForCreator(id, creatorUserId);
@@ -111,49 +127,33 @@ export async function update(
   // Le type est IMMUTABLE via cet endpoint : un switch person↔organization
   // doit passer par delete + recreate (plus simple, évite des ambiguïtés sur
   // les champs orphelins).
-  if (data.guarantorTypeKey !== existing.guarantorTypeKey) {
+  if (
+    data.guarantorTypeKey !== undefined &&
+    data.guarantorTypeKey !== existing.guarantorTypeKey
+  ) {
     throw new HTTPException(400, {
       message:
         'Le type d’un garant est immuable. Pour changer de type, supprimez puis recréez le garant.',
     });
   }
 
-  const values =
-    data.guarantorTypeKey === 'person'
-      ? {
-          civility: data.civility ?? null,
-          lastName: data.lastName,
-          firstName: data.firstName,
-          email: data.email ?? null,
-          phone: data.phone ?? null,
-          birthDate: data.birthDate ?? null,
-          birthPlace: data.birthPlace ?? null,
-          addressLine: data.addressLine ?? null,
-          postalCode: data.postalCode ?? null,
-          city: data.city ?? null,
-          organizationName: null,
-          organizationReference: null,
-          updatedAt: new Date(),
-        }
-      : {
-          civility: null,
-          lastName: null,
-          firstName: null,
-          email: data.email ?? null,
-          phone: data.phone ?? null,
-          birthDate: null,
-          birthPlace: null,
-          addressLine: data.addressLine ?? null,
-          postalCode: data.postalCode ?? null,
-          city: data.city ?? null,
-          organizationName: data.organizationName,
-          organizationReference: data.organizationReference ?? null,
-          updatedAt: new Date(),
-        };
+  // Construction du set : on ne met que les clés présentes (≠ undefined).
+  // On exclut `guarantorTypeKey` du set : il est immutable (déjà validé
+  // ci-dessus), inutile de le réécrire.
+  const { guarantorTypeKey: _ignored, ...patchable } = data;
+  void _ignored;
+  const updateData = Object.fromEntries(
+    Object.entries(patchable).filter(([, v]) => v !== undefined),
+  );
+
+  if (Object.keys(updateData).length === 0) {
+    // PATCH vide → on renvoie l'entité telle quelle, sans toucher updatedAt.
+    return existing;
+  }
 
   const [row] = await db
     .update(guarantors)
-    .set(values)
+    .set({ ...updateData, updatedAt: new Date() })
     // Double filtre id + ownership pour éviter toute course condition.
     .where(and(eq(guarantors.id, id), eq(guarantors.createdByUserId, creatorUserId)))
     .returning();

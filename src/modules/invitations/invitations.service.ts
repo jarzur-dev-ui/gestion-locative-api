@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import postgres from 'postgres';
 import { db } from '../../db/client.js';
 import { guarantors } from '../../db/schema/guarantors.js';
 import type { Invitation } from '../../db/schema/invitations.js';
@@ -12,6 +13,10 @@ import { users } from '../../db/schema/users.js';
 import { renderInvitationEmail } from '../../lib/email-templates.js';
 import { sendEmail } from '../../lib/mailer.js';
 import { hashPassword } from '../auth/password.js';
+
+// Postgres error code pour `unique_violation` (cf. https://www.postgresql.org/docs/current/errcodes-appendix.html).
+// postgres.js expose `code` (string) sur `PostgresError`.
+const PG_UNIQUE_VIOLATION = '23505';
 
 const INVITATION_TTL_DAYS = 7;
 const INVITATION_TTL_MS = INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -249,6 +254,26 @@ export async function acceptInvitation(opts: {
 
     const normalizedEmail = invitation.emailSnapshot.toLowerCase().trim();
 
+    // R1 — Race condition guard.
+    // On marque l'invitation consommée AVANT de créer l'utilisateur, avec un
+    // filtre `usedAt IS NULL` qui agit comme un compare-and-swap atomique :
+    // deux requêtes concurrentes avec le même token ne peuvent pas toutes
+    // deux franchir cette étape, car Postgres sérialise l'UPDATE (verrou de
+    // ligne). La transaction perdante voit `usedAt` déjà rempli et reçoit 0
+    // ligne mise à jour → on lève 410 et la transaction rollback.
+    // Cette UPDATE se fait AVANT l'INSERT users : si la ligne d'invitation
+    // est déjà verrouillée par une autre transaction, on attend (puis on
+    // voit 0 ligne) au lieu de gaspiller un hash + insert.
+    const consumedInvitation = await tx
+      .update(invitations)
+      .set({ usedAt: new Date() })
+      .where(and(eq(invitations.token, opts.token), isNull(invitations.usedAt)))
+      .returning({ token: invitations.token });
+
+    if (consumedInvitation.length === 0) {
+      throw new HTTPException(410, { message: 'Invitation déjà utilisée ou expirée' });
+    }
+
     // Vérifie l'unicité de l'email AVANT l'insert pour rendre un 409 lisible
     // (l'index unique users.email lèverait sinon une erreur DB générique).
     const [existing] = await tx
@@ -264,17 +289,33 @@ export async function acceptInvitation(opts: {
       });
     }
 
-    const [user] = await tx
-      .insert(users)
-      .values({
-        email: normalizedEmail,
-        passwordHash,
-        role: invitation.targetTypeKey, // 'tenant' | 'guarantor' — aligné sur user_role enum
-      })
-      .returning();
+    // R2 — Email duplicate.
+    // Entre le SELECT ci-dessus et cet INSERT, une autre requête concurrente
+    // peut créer un user avec le même email. Le filet de sécurité ultime est
+    // la contrainte UNIQUE sur `users.email` : on capture le code Postgres
+    // 23505 (unique_violation) et on le traduit en 409 propre au lieu de
+    // laisser remonter un 500 cryptique.
+    let user: User;
+    try {
+      const [inserted] = await tx
+        .insert(users)
+        .values({
+          email: normalizedEmail,
+          passwordHash,
+          role: invitation.targetTypeKey, // 'tenant' | 'guarantor' — aligné sur user_role enum
+        })
+        .returning();
 
-    if (!user) {
-      throw new Error("Échec de la création de l'utilisateur");
+      if (!inserted) {
+        throw new Error("Échec de la création de l'utilisateur");
+      }
+      user = inserted;
+    } catch (err) {
+      // postgres.js expose `PostgresError` (typeof `Error`) avec un champ `code: string`.
+      if (err instanceof postgres.PostgresError && err.code === PG_UNIQUE_VIOLATION) {
+        throw new HTTPException(409, { message: 'Un compte existe déjà avec cet email' });
+      }
+      throw err;
     }
 
     // On lie la cible (locataire OU garant) au compte fraîchement créé.
@@ -301,16 +342,6 @@ export async function acceptInvitation(opts: {
         throw new HTTPException(404, { message: 'Garant cible introuvable' });
       }
     }
-
-    // Marque l'invitation consommée. Filtre `usedAt IS NULL` pour rendre
-    // l'opération idempotente face à un double-clic / replay : si une autre
-    // transaction a déjà consommé l'invitation, ce UPDATE ne touche aucune
-    // ligne et la nôtre fera rollback via l'erreur 409 retournée à l'étape
-    // précédente (création user déjà bloquée par l'unique email).
-    await tx
-      .update(invitations)
-      .set({ usedAt: new Date() })
-      .where(and(eq(invitations.token, opts.token), isNull(invitations.usedAt)));
 
     return user;
   });

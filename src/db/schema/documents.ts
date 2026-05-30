@@ -56,6 +56,14 @@ export const documents = pgTable(
     }),
     cancellationReason: text('cancellation_reason'),
 
+    // Soft delete : la ligne est masquée des lectures (cf. `documents.service`)
+    // mais conservée le temps du TTL configurable (`document.soft_delete_ttl_days`,
+    // 90 jours par défaut). Un cron purge ensuite la ligne + le fichier.
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedByUserId: uuid('deleted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
     uploadedByUserId: uuid('uploaded_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -68,6 +76,7 @@ export const documents = pgTable(
     propertyIdx: index('documents_property_id_idx').on(table.propertyId),
     statusIdx: index('documents_status_idx').on(table.statusKey),
     typeIdx: index('documents_type_idx').on(table.documentTypeKey),
+    deletedAtIdx: index('documents_deleted_at_idx').on(table.deletedAt),
     ownershipCheck: check(
       'documents_ownership_check',
       sql`(${table.leaseId} IS NOT NULL OR ${table.propertyId} IS NOT NULL)`,

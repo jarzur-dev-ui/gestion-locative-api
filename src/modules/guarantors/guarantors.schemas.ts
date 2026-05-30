@@ -88,25 +88,43 @@ export const CreateGuarantorSchema = z
   .openapi('CreateGuarantor');
 
 /**
- * Update = même shape que Create : on remplace l'enregistrement complet.
- * Le type (`guarantorTypeKey`) reste obligatoire dans le payload, mais le
- * service rejette en 400 toute tentative de changer ce champ par rapport à
- * la ligne existante (un switch person↔organization doit passer par
- * delete + recreate, c'est plus simple et plus sûr).
+ * PATCH (JSON Merge Patch, RFC 7396) :
+ * - Clé absente → ne touche pas la colonne
+ * - Clé à `null` → set la colonne à NULL
+ * - Clé avec valeur → update la colonne
+ *
+ * Toutes les colonnes de la table `guarantors` (hors PK / discriminant) sont
+ * nullables en DB, ce qui rend la sémantique du patch homogène quel que soit
+ * le type. Le service rejette en 400 toute tentative de changer
+ * `guarantorTypeKey` (immutable via PATCH — passer par delete + recreate pour
+ * un switch person↔organization).
+ *
+ * Note : on ne fait PAS de discriminated union ici, sinon le client devrait
+ * resaisir `guarantorTypeKey` à chaque appel — ce qui contredit la sémantique
+ * "patch partiel". Le `guarantorTypeKey` est accepté en entrée (pour les
+ * clients qui voudraient le passer par symétrie avec POST) mais doit
+ * correspondre à la valeur existante.
  */
-const UpdatePersonGuarantorSchema = CreatePersonGuarantorSchema.openapi(
-  'UpdatePersonGuarantor',
-);
-const UpdateOrganizationGuarantorSchema = CreateOrganizationGuarantorSchema.openapi(
-  'UpdateOrganizationGuarantor',
-);
-
-export const UpdateGuarantorSchema = z
-  .discriminatedUnion('guarantorTypeKey', [
-    UpdatePersonGuarantorSchema,
-    UpdateOrganizationGuarantorSchema,
-  ])
-  .openapi('UpdateGuarantor');
+export const PatchGuarantorSchema = z
+  .object({
+    guarantorTypeKey: z.enum(GUARANTOR_TYPES).optional(),
+    // Champs `person`.
+    civility: z.string().min(1).nullable().optional(),
+    lastName: z.string().min(1).nullable().optional(),
+    firstName: z.string().min(1).nullable().optional(),
+    // Champs partagés / `organization`.
+    email: z.string().email().nullable().optional(),
+    phone: z.string().min(1).nullable().optional(),
+    birthDate: z.string().date().nullable().optional(),
+    birthPlace: z.string().min(1).nullable().optional(),
+    addressLine: z.string().min(1).nullable().optional(),
+    postalCode: z.string().min(1).nullable().optional(),
+    city: z.string().min(1).nullable().optional(),
+    // Champs `organization`.
+    organizationName: z.string().min(1).nullable().optional(),
+    organizationReference: z.string().min(1).nullable().optional(),
+  })
+  .openapi('PatchGuarantor');
 
 export const GuarantorIdParamsSchema = z
   .object({
@@ -133,5 +151,5 @@ export const GuarantorListSchema = z.array(GuarantorSchema).openapi('GuarantorLi
 
 export type GuarantorPublic = z.infer<typeof GuarantorSchema>;
 export type CreateGuarantorInput = z.infer<typeof CreateGuarantorSchema>;
-export type UpdateGuarantorInput = z.infer<typeof UpdateGuarantorSchema>;
+export type PatchGuarantorInput = z.infer<typeof PatchGuarantorSchema>;
 export type GuarantorTypeKey = (typeof GUARANTOR_TYPES)[number];

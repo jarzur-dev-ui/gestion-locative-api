@@ -269,14 +269,32 @@ Mise à jour : 2026-05-30.
 
 ---
 
-### Milestone 6 — Migration localStorage → DB
+### Milestone 6 — Migration localStorage → DB + intégration API front
 
-**Frontend**
-- [ ] Page `/migration` (one-shot)
-- [ ] Lecture des clés `gl.bailleur`, `gl.baux`
-- [ ] Envoi vers `POST /api/migration/import` (endpoint dédié côté back)
+#### Stack frontend validé (2026-05-31)
 
-**Backend**
+- **`openapi-typescript`** (dev) — génère `src/api/schema.gen.ts` depuis `/openapi.json`
+  - Script : `pnpm gen:api`
+- **`openapi-fetch`** — client fetch typé, zéro divergence avec le contrat back
+- **`@tanstack/react-query`** v5 — cache, refetch, invalidation, optimistic updates
+- **`@tanstack/react-query-devtools`** (dev) — debugging
+
+#### Frontend
+- [ ] Setup deps + QueryClientProvider + devtools dans App.tsx
+- [ ] Variable d'env `VITE_API_URL` (dev: localhost:3000, prod: api.gestion-locative.zeleph.fr)
+- [ ] Génération initiale du schema via `pnpm gen:api`
+- [ ] Pages auth (login, accept-invitation) consommant `/api/auth/*`
+- [ ] AuthContext basé sur `useQuery(['me'], () => api.GET('/api/auth/me'))`
+- [ ] Routes protégées (`<RequireAuth>` wrapper)
+- [ ] Page Réglages : `landlord-profile` via API (PUT)
+- [ ] Page Biens : liste + CRUD via API
+- [ ] Page Locataires + Garants : CRUD + bouton "Inviter"
+- [ ] Page Baux : wizard 4 étapes
+- [ ] Page Quittances : liste mensuelle + toggle Oui/Non (mark-paid) avec optimistic update + undo 24h
+- [ ] Page "Mon dossier" côté locataire : drop multi-fichiers par catégorie (whitelist `/api/document-types?role=tenant`)
+- [ ] Page `/migration` (one-shot) — lecture localStorage + POST `/api/migration/import`
+
+#### Backend (complément M6)
 - [ ] Endpoint `POST /api/migration/import` : parse + crée landlord_profile + properties + tenants + leases en `active`
 - [ ] Idempotence (peut être relancé sans dupliquer)
 

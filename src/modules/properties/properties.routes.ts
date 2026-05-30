@@ -5,18 +5,18 @@ import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
 import {
   CreatePropertySchema,
+  PatchPropertySchema,
   PropertyIdParamSchema,
   PropertyListSchema,
   PropertySchema,
-  UpdatePropertySchema,
 } from './properties.schemas.js';
 import {
   create,
   getByIdForOwner,
   listByOwner,
+  patch,
   remove,
   toPublicProperty,
-  update,
 } from './properties.service.js';
 
 const TAG = 'properties';
@@ -101,14 +101,16 @@ const getOneRoute = createRoute({
 });
 
 const updateRoute = createRoute({
-  method: 'put',
+  method: 'patch',
   path: '/{id}',
   tags: [TAG],
-  summary: 'Mettre à jour un bien immobilier (remplacement complet)',
+  summary: 'Mettre à jour partiellement un bien immobilier (JSON Merge Patch)',
+  description:
+    'Mise à jour partielle (RFC 7396). Champ absent = inchangé, champ à `null` = effacé (colonnes nullables seulement), champ avec valeur = mis à jour.',
   request: {
     params: PropertyIdParamSchema,
     body: {
-      content: { 'application/json': { schema: UpdatePropertySchema } },
+      content: { 'application/json': { schema: PatchPropertySchema } },
     },
   },
   responses: {
@@ -198,7 +200,7 @@ propertiesRoutes.openapi(updateRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
-  const row = await update(id, user.id, data);
+  const row = await patch(id, user.id, data);
   return c.json(toPublicProperty(row), 200);
 });
 

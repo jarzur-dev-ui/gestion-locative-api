@@ -12,7 +12,7 @@ import type {
   CreateLeaseInput,
   LeasePublic,
   LeaseStatusKey,
-  UpdateLeaseInput,
+  PatchLeaseInput,
 } from './leases.schemas.js';
 
 /**
@@ -287,59 +287,113 @@ export async function create(userId: string, data: CreateLeaseInput): Promise<Le
   return toPublicLease(inserted, tenantsList, guarantorsList);
 }
 
-export async function update(
+/**
+ * PATCH (JSON Merge Patch, RFC 7396) :
+ * - Clé absente → ne touche pas la colonne (ni la M2M associée)
+ * - Clé à `null` → set la colonne à NULL (colonnes nullables seulement —
+ *   ici seul `endDate` est concerné)
+ * - Clé avec valeur → update la colonne
+ *
+ * Spécificités leases :
+ * - `propertyId` est IMMUTABLE (absent du schéma de patch).
+ * - `statusKey` est piloté exclusivement par `PATCH /:id/status` (transitions
+ *   validées par une machine à états).
+ * - `tenantIds` / `guarantorIds` :
+ *   - Absents → on NE TOUCHE PAS aux jointures (sémantique merge-patch).
+ *   - Présents (tableau, possiblement vide) → remplacement intégral.
+ *     Tableau vide = on supprime toutes les jointures.
+ *   La logique delete-then-insert reste dans la même transaction que l'UPDATE
+ *   sur la ligne lease pour garantir l'atomicité.
+ */
+export async function patch(
   id: string,
   userId: string,
-  data: UpdateLeaseInput,
+  data: PatchLeaseInput,
 ): Promise<LeasePublic> {
   // Pré-check d'ownership : lève 404/403 si besoin avant la transaction.
-  // La propriété est IMMUTABLE via PUT — on garde celle de la ligne existante.
   await getLeaseForOwner(id, userId);
-  await assertTenantsOwnedByUser(data.tenantIds, userId);
-  await assertGuarantorsOwnedByUser(data.guarantorIds, userId);
+  if (data.tenantIds !== undefined) {
+    await assertTenantsOwnedByUser(data.tenantIds, userId);
+  }
+  if (data.guarantorIds !== undefined) {
+    await assertGuarantorsOwnedByUser(data.guarantorIds, userId);
+  }
+
+  // Construction du set : on ne met que les clés présentes (≠ undefined).
+  // `endDate` peut être explicitement `null` (= effacer une date de fin).
+  const updateData: Record<string, unknown> = {};
+  if (data.leaseTypeKey !== undefined) updateData.leaseTypeKey = data.leaseTypeKey;
+  if (data.startDate !== undefined) updateData.startDate = data.startDate;
+  if (data.endDate !== undefined) updateData.endDate = data.endDate;
+  if (data.monthlyRentCents !== undefined) updateData.monthlyRentCents = data.monthlyRentCents;
+  if (data.monthlyChargesCents !== undefined)
+    updateData.monthlyChargesCents = data.monthlyChargesCents;
+  if (data.chargesTypeKey !== undefined) updateData.chargesTypeKey = data.chargesTypeKey;
+  if (data.depositCents !== undefined) updateData.depositCents = data.depositCents;
+  if (data.paymentDay !== undefined) updateData.paymentDay = data.paymentDay;
+  if (data.solidarity !== undefined) updateData.solidarity = data.solidarity;
+  if (data.signatureMethodKey !== undefined)
+    updateData.signatureMethodKey = data.signatureMethodKey;
+  if (data.originalPaperArchived !== undefined)
+    updateData.originalPaperArchived = data.originalPaperArchived;
+
+  const hasScalarChanges = Object.keys(updateData).length > 0;
+  const touchesTenants = data.tenantIds !== undefined;
+  const touchesGuarantors = data.guarantorIds !== undefined;
+
+  if (!hasScalarChanges && !touchesTenants && !touchesGuarantors) {
+    // PATCH vide → on renvoie l'entité telle quelle, sans toucher updatedAt.
+    return getByIdForOwner(id, userId);
+  }
 
   const updated = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(leases)
-      .set({
-        leaseTypeKey: data.leaseTypeKey,
-        startDate: data.startDate,
-        endDate: data.endDate ?? null,
-        monthlyRentCents: data.monthlyRentCents,
-        monthlyChargesCents: data.monthlyChargesCents,
-        chargesTypeKey: data.chargesTypeKey,
-        depositCents: data.depositCents,
-        paymentDay: data.paymentDay,
-        solidarity: data.solidarity,
-        signatureMethodKey: data.signatureMethodKey,
-        originalPaperArchived: data.originalPaperArchived,
-        updatedAt: new Date(),
-      })
-      .where(eq(leases.id, id))
-      .returning();
-
-    if (!row) {
-      throw new HTTPException(404, { message: 'Bail introuvable' });
+    let row;
+    if (hasScalarChanges) {
+      const [updatedRow] = await tx
+        .update(leases)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(leases.id, id))
+        .returning();
+      if (!updatedRow) {
+        throw new HTTPException(404, { message: 'Bail introuvable' });
+      }
+      row = updatedRow;
+    } else {
+      // Pas de changement scalaire mais on a touché aux M2M : on bump quand
+      // même `updatedAt` pour refléter la modification de l'agrégat bail.
+      const [updatedRow] = await tx
+        .update(leases)
+        .set({ updatedAt: new Date() })
+        .where(eq(leases.id, id))
+        .returning();
+      if (!updatedRow) {
+        throw new HTTPException(404, { message: 'Bail introuvable' });
+      }
+      row = updatedRow;
     }
 
-    // Remplacement complet des jointures : on supprime toutes les jointures
-    // existantes puis on réinsère. Plus simple qu'un diff, et acceptable
-    // car la table est petite (quelques lignes max par bail).
-    await tx.delete(leaseTenants).where(eq(leaseTenants.leaseId, id));
-    await tx.delete(leaseGuarantors).where(eq(leaseGuarantors.leaseId, id));
-
-    if (data.tenantIds.length > 0) {
-      const uniqueTenantIds = Array.from(new Set(data.tenantIds));
-      await tx
-        .insert(leaseTenants)
-        .values(uniqueTenantIds.map((tenantId) => ({ leaseId: id, tenantId })));
+    // Jointures : remplacement intégral UNIQUEMENT si la clé est présente.
+    // Absente → on ne touche à rien (sémantique JSON Merge Patch).
+    if (touchesTenants) {
+      const tenantIds = data.tenantIds!;
+      await tx.delete(leaseTenants).where(eq(leaseTenants.leaseId, id));
+      if (tenantIds.length > 0) {
+        const uniqueTenantIds = Array.from(new Set(tenantIds));
+        await tx
+          .insert(leaseTenants)
+          .values(uniqueTenantIds.map((tenantId) => ({ leaseId: id, tenantId })));
+      }
     }
 
-    if (data.guarantorIds.length > 0) {
-      const uniqueGuarantorIds = Array.from(new Set(data.guarantorIds));
-      await tx
-        .insert(leaseGuarantors)
-        .values(uniqueGuarantorIds.map((guarantorId) => ({ leaseId: id, guarantorId })));
+    if (touchesGuarantors) {
+      const guarantorIds = data.guarantorIds!;
+      await tx.delete(leaseGuarantors).where(eq(leaseGuarantors.leaseId, id));
+      if (guarantorIds.length > 0) {
+        const uniqueGuarantorIds = Array.from(new Set(guarantorIds));
+        await tx
+          .insert(leaseGuarantors)
+          .values(uniqueGuarantorIds.map((guarantorId) => ({ leaseId: id, guarantorId })));
+      }
     }
 
     return row;

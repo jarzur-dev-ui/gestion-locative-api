@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import type { Tenant } from '../../db/schema/tenants.js';
 import { tenants } from '../../db/schema/tenants.js';
-import type { CreateTenantInput, TenantPublic, UpdateTenantInput } from './tenants.schemas.js';
+import type { CreateTenantInput, PatchTenantInput, TenantPublic } from './tenants.schemas.js';
 
 export async function listByCreator(creatorUserId: string): Promise<Tenant[]> {
   return db
@@ -60,29 +60,35 @@ export async function getByIdForCreator(
   return tenant;
 }
 
-export async function update(
+/**
+ * PATCH (JSON Merge Patch, RFC 7396) :
+ * - Clé absente → ne touche pas la colonne
+ * - Clé à `null` → set la colonne à NULL (colonnes nullables seulement)
+ * - Clé avec valeur → update la colonne
+ */
+export async function patch(
   id: string,
   creatorUserId: string,
-  data: UpdateTenantInput,
+  data: PatchTenantInput,
 ): Promise<Tenant> {
   // Garantit existence + ownership avant la mise à jour.
   await getByIdForCreator(id, creatorUserId);
 
+  // On filtre les clés `undefined` (= absentes du payload) ; `null` est conservé
+  // pour effacer explicitement la valeur (colonnes nullables uniquement, garanti
+  // par le schéma Zod côté entrée).
+  const updateData = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== undefined),
+  );
+
+  if (Object.keys(updateData).length === 0) {
+    // PATCH vide → on renvoie l'entité telle quelle, sans toucher updatedAt.
+    return getByIdForCreator(id, creatorUserId);
+  }
+
   const [tenant] = await db
     .update(tenants)
-    .set({
-      civility: data.civility ?? null,
-      lastName: data.lastName,
-      firstName: data.firstName,
-      email: data.email,
-      phone: data.phone ?? null,
-      birthDate: data.birthDate ?? null,
-      birthPlace: data.birthPlace ?? null,
-      currentAddressLine: data.currentAddressLine ?? null,
-      currentPostalCode: data.currentPostalCode ?? null,
-      currentCity: data.currentCity ?? null,
-      updatedAt: new Date(),
-    })
+    .set({ ...updateData, updatedAt: new Date() })
     .where(and(eq(tenants.id, id), eq(tenants.createdByUserId, creatorUserId)))
     .returning();
 

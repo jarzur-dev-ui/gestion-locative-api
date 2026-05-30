@@ -36,20 +36,28 @@ export const CreateTenantSchema = z
   })
   .openapi('CreateTenant');
 
-export const UpdateTenantSchema = z
+/**
+ * Patch (JSON Merge Patch, RFC 7396) :
+ * - Champ absent → ne touche pas la colonne
+ * - Champ à `null` → set la colonne à NULL (colonnes nullables seulement)
+ * - Champ avec valeur → update la colonne
+ *
+ * Colonnes NOT NULL : lastName, firstName, email → pas de `null` autorisé.
+ */
+export const PatchTenantSchema = z
   .object({
-    civility: z.string().min(1).optional(),
-    lastName: z.string().min(1),
-    firstName: z.string().min(1),
-    email: z.string().email(),
-    phone: z.string().min(1).optional(),
-    birthDate: z.string().date().optional(),
-    birthPlace: z.string().min(1).optional(),
-    currentAddressLine: z.string().min(1).optional(),
-    currentPostalCode: z.string().min(1).optional(),
-    currentCity: z.string().min(1).optional(),
+    civility: z.string().min(1).nullable().optional(),
+    lastName: z.string().min(1).optional(),
+    firstName: z.string().min(1).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().min(1).nullable().optional(),
+    birthDate: z.string().date().nullable().optional(),
+    birthPlace: z.string().min(1).nullable().optional(),
+    currentAddressLine: z.string().min(1).nullable().optional(),
+    currentPostalCode: z.string().min(1).nullable().optional(),
+    currentCity: z.string().min(1).nullable().optional(),
   })
-  .openapi('UpdateTenant');
+  .openapi('PatchTenant');
 
 export const TenantIdParamsSchema = z
   .object({
@@ -64,4 +72,4 @@ export const TenantListSchema = z.array(TenantSchema).openapi('TenantList');
 
 export type TenantPublic = z.infer<typeof TenantSchema>;
 export type CreateTenantInput = z.infer<typeof CreateTenantSchema>;
-export type UpdateTenantInput = z.infer<typeof UpdateTenantSchema>;
+export type PatchTenantInput = z.infer<typeof PatchTenantSchema>;

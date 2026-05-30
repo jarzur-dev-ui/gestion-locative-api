@@ -146,4 +146,10 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
     value: 24,
     description: 'Fenêtre de temps après mark-paid pour annuler (mark-unpaid).',
   },
+  {
+    key: 'document.soft_delete_ttl_days',
+    value: 90,
+    description:
+      'Durée (jours) entre le soft-delete d\'un document et sa purge physique par le cron. Min 7, max 365.',
+  },
 ];

@@ -37,20 +37,29 @@ export const CreatePropertySchema = z
   })
   .openapi('CreateProperty');
 
-export const UpdatePropertySchema = z
+/**
+ * Patch (JSON Merge Patch, RFC 7396) :
+ * - Champ absent → ne touche pas la colonne
+ * - Champ à `null` → set la colonne à NULL (autorisé uniquement pour les colonnes nullables en DB)
+ * - Champ avec valeur → update la colonne
+ *
+ * Les colonnes NOT NULL côté DB (addressLine, postalCode, city, propertyTypeKey, furnished)
+ * n'acceptent PAS `null` (l'absence est OK, mais pas la suppression explicite).
+ */
+export const PatchPropertySchema = z
   .object({
-    addressLine: z.string().min(1),
-    postalCode: z.string().min(1),
-    city: z.string().min(1),
-    propertyTypeKey: z.string().min(1),
-    surfaceM2: z.number().positive().optional(),
-    roomCount: z.number().int().nonnegative().optional(),
-    builtYear: z.number().int().optional(),
-    dpeGrade: z.enum(DPE_GRADES).optional(),
-    gesGrade: z.enum(DPE_GRADES).optional(),
-    furnished: z.boolean().optional().default(false),
+    addressLine: z.string().min(1).optional(),
+    postalCode: z.string().min(1).optional(),
+    city: z.string().min(1).optional(),
+    propertyTypeKey: z.string().min(1).optional(),
+    surfaceM2: z.number().positive().nullable().optional(),
+    roomCount: z.number().int().nonnegative().nullable().optional(),
+    builtYear: z.number().int().nullable().optional(),
+    dpeGrade: z.enum(DPE_GRADES).nullable().optional(),
+    gesGrade: z.enum(DPE_GRADES).nullable().optional(),
+    furnished: z.boolean().optional(),
   })
-  .openapi('UpdateProperty');
+  .openapi('PatchProperty');
 
 export const PropertyListSchema = z.array(PropertySchema).openapi('PropertyList');
 
@@ -63,4 +72,4 @@ export const PropertyIdParamSchema = z.object({
 
 export type PropertyPublic = z.infer<typeof PropertySchema>;
 export type CreatePropertyInput = z.infer<typeof CreatePropertySchema>;
-export type UpdatePropertyInput = z.infer<typeof UpdatePropertySchema>;
+export type PatchPropertyInput = z.infer<typeof PatchPropertySchema>;

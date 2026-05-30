@@ -5,18 +5,18 @@ import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
 import {
   CreateTenantSchema,
+  PatchTenantSchema,
   TenantIdParamsSchema,
   TenantListSchema,
   TenantSchema,
-  UpdateTenantSchema,
 } from './tenants.schemas.js';
 import {
   create,
   deleteTenant,
   getByIdForCreator,
   listByCreator,
+  patch,
   toPublicTenant,
-  update,
 } from './tenants.service.js';
 
 const TAG = 'tenants';
@@ -97,14 +97,16 @@ const getTenantRoute = createRoute({
 });
 
 const updateTenantRoute = createRoute({
-  method: 'put',
+  method: 'patch',
   path: '/{id}',
   tags: [TAG],
-  summary: 'Mettre à jour un locataire (remplacement complet)',
+  summary: 'Mettre à jour partiellement un locataire (JSON Merge Patch)',
+  description:
+    'Mise à jour partielle (RFC 7396). Champ absent = inchangé, champ à `null` = effacé (colonnes nullables seulement), champ avec valeur = mis à jour.',
   request: {
     params: TenantIdParamsSchema,
     body: {
-      content: { 'application/json': { schema: UpdateTenantSchema } },
+      content: { 'application/json': { schema: PatchTenantSchema } },
     },
   },
   responses: {
@@ -188,7 +190,7 @@ tenantsRoutes.openapi(updateTenantRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
-  const tenant = await update(id, user.id, data);
+  const tenant = await patch(id, user.id, data);
   return c.json(toPublicTenant(tenant), 200);
 });
 

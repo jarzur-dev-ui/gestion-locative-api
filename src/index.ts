@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { sessionMiddleware } from './middleware/session.js';
+import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { configRoutes } from './modules/config/config.routes.js';
 import { documentSharesRoutes } from './modules/document-shares/document-shares.routes.js';
@@ -67,6 +68,7 @@ app.route('/api/document-types', documentTypesRoutes);
 app.route('/api/document-shares', documentSharesRoutes);
 app.route('/api/rent-periods', rentPeriodsRoutes);
 app.route('/api/config', configRoutes);
+app.route('/api/audit-logs', auditLogsRoutes);
 app.route('/share', sharePublicRoutes);
 
 app.doc('/openapi.json', {

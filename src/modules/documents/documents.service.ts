@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import type { Document } from '../../db/schema/documents.js';
@@ -16,6 +16,10 @@ import {
   storeFile,
   UnsupportedMimeTypeError,
 } from '../../lib/storage.js';
+import {
+  getStorageQuotaBytes,
+  getStorageUsedBytes,
+} from '../landlord-profiles/landlord-profiles.service.js';
 import { isAllowedTypeForRole } from './document-types.js';
 import type {
   DocumentPublic,
@@ -210,7 +214,12 @@ export async function assertDocumentAccessibleByUser(
   documentId: string,
   user: User,
 ): Promise<Document> {
-  const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
+  // Soft-deleted : invisibles aux lectures (filter isNull deletedAt).
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+    .limit(1);
 
   if (!doc) {
     throw new HTTPException(404, { message: 'Document introuvable' });
@@ -241,7 +250,13 @@ async function assertDocumentManageableByLandlord(
     throw new HTTPException(403, { message: 'Accès refusé' });
   }
 
-  const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
+  // Soft-deleted : invisibles aux opérations standards (update/delete).
+  // Le restore passe par un chemin dédié (`restoreDocument`).
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
+    .limit(1);
 
   if (!doc) {
     throw new HTTPException(404, { message: 'Document introuvable' });
@@ -271,6 +286,42 @@ async function assertDocumentManageableByLandlord(
   }
 
   return doc;
+}
+
+/**
+ * Résout le bailleur propriétaire de la ressource cible (lease ou property)
+ * afin de rattacher la consommation de stockage à son quota.
+ *
+ * - Si le caller est lui-même bailleur, on retourne son `user.id`.
+ * - Sinon (tenant/guarantor), on remonte la chaîne `lease → property.owner_user_id`
+ *   ou directement `property.owner_user_id`. La V1 n'autorise pas les
+ *   tenants/guarantors à uploader hors bail donc on devrait toujours
+ *   trouver un owner via le bail.
+ *
+ * Retourne `null` si on ne parvient pas à identifier de bailleur — dans ce
+ * cas on saute le check quota (best-effort, à durcir si besoin).
+ */
+async function resolveQuotaOwnerUserId(user: User, input: UploadInput): Promise<string | null> {
+  if (user.role === 'landlord') return user.id;
+
+  if (input.leaseId) {
+    const [row] = await db
+      .select({ ownerUserId: properties.ownerUserId })
+      .from(leases)
+      .innerJoin(properties, eq(properties.id, leases.propertyId))
+      .where(eq(leases.id, input.leaseId))
+      .limit(1);
+    if (row) return row.ownerUserId;
+  }
+  if (input.propertyId) {
+    const [row] = await db
+      .select({ ownerUserId: properties.ownerUserId })
+      .from(properties)
+      .where(eq(properties.id, input.propertyId))
+      .limit(1);
+    if (row) return row.ownerUserId;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +366,7 @@ export async function listForUser(user: User, filters: ListFilters): Promise<Doc
   // biome-ignore lint/style/noNonNullAssertion: au moins une clause garantie par les early-returns ci-dessus
   const aclWhere = aclClauses.length === 1 ? aclClauses[0]! : or(...aclClauses)!;
 
-  const filterClauses: SQL[] = [aclWhere];
+  const filterClauses: SQL[] = [aclWhere, isNull(documents.deletedAt)];
   if (filters.leaseId) {
     filterClauses.push(eq(documents.leaseId, filters.leaseId));
   }
@@ -389,6 +440,26 @@ export async function uploadDocument(user: User, input: UploadInput): Promise<Do
   // adapter type `node:stream/web` Readable → fs WriteStream.
   const arrayBuffer = await input.file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  const incomingSize = buffer.byteLength;
+
+  // Quota landlord : on rattache la consommation au bailleur propriétaire
+  // de la ressource (lease/property). Pour les uploads tenant/garant on
+  // resolve d'abord le bailleur via la chaîne propriété → owner, puis on
+  // compte vis-à-vis de SON quota — c'est lui qui héberge les pièces.
+  const quotaUserId = await resolveQuotaOwnerUserId(user, input);
+  if (quotaUserId) {
+    const [used, quota] = await Promise.all([
+      getStorageUsedBytes(quotaUserId),
+      getStorageQuotaBytes(quotaUserId),
+    ]);
+    if (used + incomingSize > quota) {
+      const usedMb = Math.round(used / (1024 * 1024));
+      const quotaMb = Math.round(quota / (1024 * 1024));
+      throw new HTTPException(413, {
+        message: `Quota de stockage dépassé (${usedMb} Mo / ${quotaMb} Mo)`,
+      });
+    }
+  }
 
   let stored: Awaited<ReturnType<typeof storeFile>>;
   try {
@@ -480,19 +551,89 @@ export async function updateStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Delete (landlord)
+// Soft delete + restore (landlord)
 // ---------------------------------------------------------------------------
 
+/**
+ * Soft delete : on positionne `deletedAt` + `deletedByUserId`, on garde la
+ * ligne et le fichier. Le binaire sera supprimé par le cron de purge après
+ * expiration du TTL configurable (`document.soft_delete_ttl_days`, 90j).
+ *
+ * La ligne devient invisible des lectures (cf. `isNull(documents.deletedAt)`
+ * dans toutes les queries de lecture).
+ */
 export async function remove(documentId: string, user: User): Promise<void> {
   const doc = await assertDocumentManageableByLandlord(documentId, user);
 
-  // Hard delete V1 : on supprime la ligne puis le binaire. Si la suppression
-  // du fichier échoue (volume inaccessible), on ne ré-insère pas la ligne :
-  // on logge et on laisse passer car `deleteFile` est idempotent et le
-  // gestionnaire d'erreurs global capturera. Le fichier orphelin peut être
-  // nettoyé par un job de GC ultérieur (M2.5).
-  await db.delete(documents).where(eq(documents.id, doc.id));
-  await deleteFile(doc.filePath);
+  await db
+    .update(documents)
+    .set({
+      deletedAt: new Date(),
+      deletedByUserId: user.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, doc.id));
+}
+
+/**
+ * Restore d'un document soft-deleted (bailleur uniquement, sur sa ressource).
+ *
+ * - 404 si aucun document soft-deleted ne matche pour ce bailleur.
+ * - 409 si le document existe mais n'est pas (ou plus) soft-deleted.
+ */
+export async function restoreDocument(documentId: string, user: User): Promise<Document> {
+  if (user.role !== 'landlord') {
+    throw new HTTPException(403, { message: 'Accès refusé' });
+  }
+
+  const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
+
+  if (!doc) {
+    throw new HTTPException(404, { message: 'Document introuvable' });
+  }
+
+  // Vérifie l'ownership avant de révéler quoi que ce soit sur l'état du doc.
+  let manageable = false;
+  if (doc.propertyId) {
+    manageable = await userOwnsProperty(user, doc.propertyId);
+  }
+  if (!manageable && doc.leaseId) {
+    const [row] = await db
+      .select({ ownerUserId: properties.ownerUserId })
+      .from(leases)
+      .innerJoin(properties, eq(properties.id, leases.propertyId))
+      .where(eq(leases.id, doc.leaseId))
+      .limit(1);
+    manageable = !!row && row.ownerUserId === user.id;
+  }
+
+  if (!manageable) {
+    // Cohérent avec assertDocumentManageableByLandlord : on ne donne pas
+    // d'oracle d'existence à un non-propriétaire.
+    throw new HTTPException(404, { message: 'Document introuvable' });
+  }
+
+  if (doc.deletedAt === null) {
+    // Le document n'est pas (ou plus) soft-deleted : on remonte 409 plutôt
+    // qu'un succès trompeur, pour permettre au front d'afficher un message
+    // adéquat (« déjà restauré »).
+    throw new HTTPException(409, { message: 'Document déjà restauré' });
+  }
+
+  const [row] = await db
+    .update(documents)
+    .set({
+      deletedAt: null,
+      deletedByUserId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, doc.id))
+    .returning();
+
+  if (!row) {
+    throw new HTTPException(404, { message: 'Document introuvable' });
+  }
+  return row;
 }
 
 // ---------------------------------------------------------------------------

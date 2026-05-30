@@ -5,8 +5,8 @@ import type { Property } from '../../db/schema/properties.js';
 import { properties } from '../../db/schema/properties.js';
 import type {
   CreatePropertyInput,
+  PatchPropertyInput,
   PropertyPublic,
-  UpdatePropertyInput,
 } from './properties.schemas.js';
 
 type DpeGrade = NonNullable<PropertyPublic['dpeGrade']>;
@@ -98,29 +98,48 @@ export async function create(userId: string, data: CreatePropertyInput): Promise
   return row;
 }
 
-export async function update(
+/**
+ * PATCH (JSON Merge Patch, RFC 7396) :
+ * - Clé absente → ne touche pas la colonne
+ * - Clé à `null` → set la colonne à NULL
+ * - Clé avec valeur → update la colonne
+ *
+ * On construit l'objet `set` uniquement à partir des clés présentes (≠ undefined)
+ * dans le payload. `surfaceM2` est traité à part car la colonne est `numeric`
+ * (string côté Drizzle).
+ */
+export async function patch(
   id: string,
   userId: string,
-  data: UpdatePropertyInput,
+  data: PatchPropertyInput,
 ): Promise<Property> {
   // Pré-check d'ownership : lève 404/403 si besoin avant l'UPDATE.
   await getByIdForOwner(id, userId);
 
+  // Construction du set : on ne met que les clés explicitement présentes
+  // (≠ undefined). `null` est conservé pour effacer la valeur.
+  const updateData: Record<string, unknown> = {};
+  if (data.addressLine !== undefined) updateData.addressLine = data.addressLine;
+  if (data.postalCode !== undefined) updateData.postalCode = data.postalCode;
+  if (data.city !== undefined) updateData.city = data.city;
+  if (data.propertyTypeKey !== undefined) updateData.propertyTypeKey = data.propertyTypeKey;
+  if (data.surfaceM2 !== undefined) {
+    updateData.surfaceM2 = data.surfaceM2 === null ? null : String(data.surfaceM2);
+  }
+  if (data.roomCount !== undefined) updateData.roomCount = data.roomCount;
+  if (data.builtYear !== undefined) updateData.builtYear = data.builtYear;
+  if (data.dpeGrade !== undefined) updateData.dpeGrade = data.dpeGrade;
+  if (data.gesGrade !== undefined) updateData.gesGrade = data.gesGrade;
+  if (data.furnished !== undefined) updateData.furnished = data.furnished;
+
+  if (Object.keys(updateData).length === 0) {
+    // PATCH vide → on renvoie l'entité telle quelle, sans toucher updatedAt.
+    return getByIdForOwner(id, userId);
+  }
+
   const [row] = await db
     .update(properties)
-    .set({
-      addressLine: data.addressLine,
-      postalCode: data.postalCode,
-      city: data.city,
-      propertyTypeKey: data.propertyTypeKey,
-      surfaceM2: data.surfaceM2 !== undefined ? String(data.surfaceM2) : null,
-      roomCount: data.roomCount ?? null,
-      builtYear: data.builtYear ?? null,
-      dpeGrade: data.dpeGrade ?? null,
-      gesGrade: data.gesGrade ?? null,
-      furnished: data.furnished ?? false,
-      updatedAt: new Date(),
-    })
+    .set({ ...updateData, updatedAt: new Date() })
     // Double filtre `id + ownerUserId` pour éviter toute course condition.
     .where(and(eq(properties.id, id), eq(properties.ownerUserId, userId)))
     .returning();

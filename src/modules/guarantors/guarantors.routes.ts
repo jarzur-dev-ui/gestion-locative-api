@@ -9,15 +9,15 @@ import {
   GuarantorListQuerySchema,
   GuarantorListSchema,
   GuarantorSchema,
-  UpdateGuarantorSchema,
+  PatchGuarantorSchema,
 } from './guarantors.schemas.js';
 import {
   create,
   getByIdForCreator,
   listByCreator,
+  patch,
   remove,
   toPublicGuarantor,
-  update,
 } from './guarantors.service.js';
 
 const TAG = 'guarantors';
@@ -105,14 +105,16 @@ const getGuarantorRoute = createRoute({
 });
 
 const updateGuarantorRoute = createRoute({
-  method: 'put',
+  method: 'patch',
   path: '/{id}',
   tags: [TAG],
-  summary: 'Mettre à jour un garant (remplacement complet, type immuable)',
+  summary: 'Mettre à jour partiellement un garant (JSON Merge Patch, type immuable)',
+  description:
+    'Mise à jour partielle (RFC 7396). Champ absent = inchangé, champ à `null` = effacé, champ avec valeur = mis à jour. `guarantorTypeKey` est immuable : un switch person↔organization passe par delete + recreate.',
   request: {
     params: GuarantorIdParamsSchema,
     body: {
-      content: { 'application/json': { schema: UpdateGuarantorSchema } },
+      content: { 'application/json': { schema: PatchGuarantorSchema } },
     },
   },
   responses: {
@@ -201,7 +203,7 @@ guarantorsRoutes.openapi(updateGuarantorRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
-  const row = await update(id, user.id, data);
+  const row = await patch(id, user.id, data);
   return c.json(toPublicGuarantor(row), 200);
 });
 

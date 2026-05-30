@@ -20,6 +20,7 @@ import {
   assertDocumentAccessibleByUser,
   listForUser,
   remove,
+  restoreDocument,
   toPublicDocument,
   updateStatus,
   uploadDocument,
@@ -219,7 +220,7 @@ const deleteRoute = createRoute({
   method: 'delete',
   path: '/{id}',
   tags: [TAG],
-  summary: 'Supprimer un document (bailleur uniquement)',
+  summary: 'Supprimer un document (bailleur uniquement, soft delete)',
   request: {
     params: DocumentIdParamSchema,
   },
@@ -235,6 +236,38 @@ const deleteRoute = createRoute({
     },
     404: {
       description: 'Document introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+const restoreRoute = createRoute({
+  method: 'post',
+  path: '/{id}/restore',
+  tags: [TAG],
+  summary: 'Restaurer un document soft-deleted (bailleur uniquement)',
+  request: {
+    params: DocumentIdParamSchema,
+  },
+  responses: {
+    200: {
+      description: 'Document restauré',
+      content: { 'application/json': { schema: DocumentSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Document introuvable (ou non soft-deleted)',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    409: {
+      description: 'Document déjà restauré',
       content: { 'application/json': { schema: ErrorResponseSchema } },
     },
   },
@@ -419,6 +452,13 @@ documentsRoutes.openapi(deleteRoute, async (c) => {
   const { id } = c.req.valid('param');
   await remove(id, user);
   return c.body(null, 204);
+});
+
+documentsRoutes.openapi(restoreRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  const doc = await restoreDocument(id, user);
+  return c.json(toPublicDocument(doc), 200);
 });
 
 // `honoStream` n'est pas utilisé pour le moment — on garde l'import pour

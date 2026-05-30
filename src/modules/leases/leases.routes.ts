@@ -9,15 +9,15 @@ import {
   LeaseListQuerySchema,
   LeaseListSchema,
   LeaseSchema,
-  UpdateLeaseSchema,
+  PatchLeaseSchema,
   UpdateLeaseStatusSchema,
 } from './leases.schemas.js';
 import {
   create,
   getByIdForOwner,
   listByOwner,
+  patch,
   remove,
-  update,
   updateStatus,
 } from './leases.service.js';
 
@@ -110,14 +110,16 @@ const getOneRoute = createRoute({
 });
 
 const updateRoute = createRoute({
-  method: 'put',
+  method: 'patch',
   path: '/{id}',
   tags: [TAG],
-  summary: 'Mettre à jour un bail (remplacement complet, propriété immuable)',
+  summary: 'Mettre à jour partiellement un bail (JSON Merge Patch, propriété immuable)',
+  description:
+    'Mise à jour partielle (RFC 7396). Champ absent = inchangé, champ à `null` = effacé (colonnes nullables), champ avec valeur = mis à jour. `propertyId` est immuable. `statusKey` se gère via `PATCH /:id/status`. `tenantIds`/`guarantorIds` absents = inchangés ; présents = remplacement intégral de la M2M.',
   request: {
     params: LeaseIdParamSchema,
     body: {
-      content: { 'application/json': { schema: UpdateLeaseSchema } },
+      content: { 'application/json': { schema: PatchLeaseSchema } },
     },
   },
   responses: {
@@ -245,7 +247,7 @@ leasesRoutes.openapi(updateRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
-  const row = await update(id, user.id, data);
+  const row = await patch(id, user.id, data);
   return c.json(row, 200);
 });
 

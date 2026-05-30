@@ -8,6 +8,7 @@ import {
   UpsertConfigSchema,
 } from './config.schemas.js';
 import { getByKey, listAll, toPublicEntry, upsertByKey } from './config.service.js';
+import { validateConfigValue } from './config.validators.js';
 
 const TAG = 'config';
 
@@ -86,6 +87,11 @@ configRoutes.openapi(upsertRoute, async (c) => {
   }
   const { key } = c.req.valid('param');
   const body = c.req.valid('json');
-  const entry = await upsertByKey(key, body.value, body.description);
+  const validation = validateConfigValue(key, body.value);
+  if (!validation.ok) {
+    throw new HTTPException(400, { message: validation.error, cause: validation.issues });
+  }
+  // Use validation.value (potentially transformed by Zod) instead of body.value
+  const entry = await upsertByKey(key, validation.value, body.description);
   return c.json(toPublicEntry(entry), 200);
 });
