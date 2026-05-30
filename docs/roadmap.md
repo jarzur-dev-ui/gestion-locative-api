@@ -139,6 +139,30 @@ Mise à jour : 2026-05-30.
 - [ ] **P2 — Consistency pass sur les middlewares de rôle** : harmoniser entre les 6 modules (certains utilisent `requireRole`, d'autres inlinent le check). Lance un agent dédié pour normaliser.
 - [ ] **Junction update diff** : dans `leases.update`, diffuser les sets tenant/guarantor au lieu de delete-then-insert systématique (économise des writes inutiles).
 
+#### Items ajoutés post-revue Milestone 4 (rent_periods + scheduler + PDF + mailer)
+
+🔴 **Bloquants avant multi-user / SaaS** :
+
+- [ ] **R10 — Idempotence stricte sur `mark-paid`** : un double-clic peut générer 2 PDFs (le 2e échoue à l'UPDATE mais le fichier reste sur le volume). Fix attaché à R6 (cron cleanup orphelins) OU passer la génération PDF dans la transaction au prix d'une transaction longue.
+- [ ] **R11 — Email best-effort sans retry sur quittance/avis** : si SMTP est down au moment de `mark-paid`, la quittance est en BDD mais le locataire n'est pas notifié. **Fix** : queue durable (BullMQ + Redis) avec retry exponentiel + alerte UI "X emails non délivrés".
+- [ ] **R12 — Scheduler agit comme le bailleur sans audit** : `sendNotice(periodId, ownerUserId)` est appelé en interne par le cron en se faisant passer pour le landlord. Pas exploitable actuellement mais opaque. **Fix** : table `audit_logs` (P5) avec `actor_type='scheduler'`, `triggered_by='cron'`, et un endpoint `GET /api/audit-logs` côté UI bailleur.
+- [ ] **R13 — PDF generation bloque le throughput multi-user** : Browser Puppeteer singleton + 5.4s cold start = 1 quittance/process à la fois. **Fix multi-user** : pool de pages (4-8), ou worker process dédié avec queue, ou service séparé.
+
+🟡 **Améliorations à programmer en MVP** :
+
+- [ ] **P13 — Cache mémoire de la signature bailleur** : LRU cache (key = signaturePath, value = base64), invalidation sur PUT landlord-profile. Évite N reads disque pour N quittances.
+- [ ] **P16 — Endpoint admin `POST /api/internal/scheduler/run-now`** (protégé landlord) pour déclencher la tâche cron manuellement. Utile pour dev, ops et tests. Sinon `pnpm tsx scripts/scheduler-run-once.ts`.
+- [ ] **P17 — Retry PDF generation sur crash Chromium** : try/catch + recréation browser + 1 retry, sinon erreur 500 propre.
+- [ ] **P18 — Test explicite `paymentDay > daysInMonth`** : vérifier que `computeDueDate('2026-02', 31)` renvoie bien `2026-02-28`. Test unitaire à ajouter dans `scripts/test-period-generation.ts`.
+
+🟢 **Trade-offs assumés** :
+
+- **P14 — `period-generation` en UTC** : ok V1, peut diverger sur les bords de mois pour le bailleur à 23h Paris. À surveiller.
+- **PDF lifecycle hors transaction** : pragma pour éviter de tenir une tx pendant 5s pendant Chromium. Risque orphelin couvert par R6.
+- **Browser singleton** : 1 instance/process. Suffisant V1, à scaler en M2.5 R13.
+
+---
+
 #### Items ajoutés post-revue Milestone 3 (documents + storage + shares)
 
 🔴 **Bloquants avant multi-user / SaaS** :

@@ -5,11 +5,13 @@ import { db } from '../../db/client.js';
 import { guarantors } from '../../db/schema/guarantors.js';
 import type { Invitation } from '../../db/schema/invitations.js';
 import { invitations } from '../../db/schema/invitations.js';
+import { landlordProfiles } from '../../db/schema/landlord-profiles.js';
 import { tenants } from '../../db/schema/tenants.js';
 import type { User } from '../../db/schema/users.js';
 import { users } from '../../db/schema/users.js';
+import { renderInvitationEmail } from '../../lib/email-templates.js';
+import { sendEmail } from '../../lib/mailer.js';
 import { hashPassword } from '../auth/password.js';
-import { sendInvitationEmail } from './mailer.stub.js';
 
 const INVITATION_TTL_DAYS = 7;
 const INVITATION_TTL_MS = INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -42,7 +44,8 @@ export async function createInvitation(opts: {
   targetType: 'tenant' | 'guarantor';
   targetId: string;
 }): Promise<Invitation> {
-  const targetEmail = await fetchTargetEmailForCreator(opts);
+  const target = await fetchTargetForCreator(opts);
+  const inviterName = await fetchInviterDisplayName(opts.currentUserId);
 
   const token = generateInvitationToken();
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
@@ -53,7 +56,7 @@ export async function createInvitation(opts: {
       token,
       targetTypeKey: opts.targetType,
       targetId: opts.targetId,
-      emailSnapshot: targetEmail,
+      emailSnapshot: target.email,
       createdByUserId: opts.currentUserId,
       expiresAt,
     })
@@ -63,28 +66,44 @@ export async function createInvitation(opts: {
     throw new Error("Échec de la création de l'invitation");
   }
 
-  // Envoi de l'email (stub pour l'instant — sera remplacé par nodemailer M4).
-  sendInvitationEmail(targetEmail, buildMagicLink(invitation.token));
+  // Envoi de l'email via le service mailer (nodemailer). Les erreurs SMTP sont
+  // déjà capturées et loguées par `sendEmail` — on ne fait pas échouer la
+  // création d'invitation si l'envoi échoue (le bailleur pourra renvoyer).
+  const { subject, html, text } = renderInvitationEmail({
+    recipientName: target.displayName,
+    inviterName,
+    magicLink: buildMagicLink(invitation.token),
+  });
+  await sendEmail({ to: target.email, subject, html, text });
 
   return invitation;
 }
 
+type ResolvedTarget = {
+  email: string;
+  /** Nom affichable dans l'email (ex: "M. Dupont", "ACME"). Jamais vide. */
+  displayName: string;
+};
+
 /**
- * Récupère l'email du locataire ou du garant cible et vérifie l'ownership +
- * l'absence de compte déjà lié. Centralise toute la validation polymorphique
- * pour que `createInvitation` reste lisible.
+ * Récupère le locataire ou garant cible (email + nom d'affichage) et vérifie
+ * l'ownership + l'absence de compte déjà lié. Centralise toute la validation
+ * polymorphique pour que `createInvitation` reste lisible.
  */
-async function fetchTargetEmailForCreator(opts: {
+async function fetchTargetForCreator(opts: {
   currentUserId: string;
   targetType: 'tenant' | 'guarantor';
   targetId: string;
-}): Promise<string> {
+}): Promise<ResolvedTarget> {
   if (opts.targetType === 'tenant') {
     const [row] = await db
       .select({
         id: tenants.id,
         userId: tenants.userId,
         createdByUserId: tenants.createdByUserId,
+        civility: tenants.civility,
+        firstName: tenants.firstName,
+        lastName: tenants.lastName,
         email: tenants.email,
       })
       .from(tenants)
@@ -107,7 +126,10 @@ async function fetchTargetEmailForCreator(opts: {
         message: "Email manquant sur le locataire — impossible d'envoyer l'invitation",
       });
     }
-    return row.email;
+    return {
+      email: row.email,
+      displayName: formatPersonName(row.civility, row.firstName, row.lastName) ?? row.email,
+    };
   }
 
   // targetType === 'guarantor'
@@ -116,6 +138,11 @@ async function fetchTargetEmailForCreator(opts: {
       id: guarantors.id,
       userId: guarantors.userId,
       createdByUserId: guarantors.createdByUserId,
+      guarantorTypeKey: guarantors.guarantorTypeKey,
+      civility: guarantors.civility,
+      firstName: guarantors.firstName,
+      lastName: guarantors.lastName,
+      organizationName: guarantors.organizationName,
       email: guarantors.email,
     })
     .from(guarantors)
@@ -137,7 +164,55 @@ async function fetchTargetEmailForCreator(opts: {
       message: "Email manquant sur le garant — impossible d'envoyer l'invitation",
     });
   }
-  return row.email;
+
+  const displayName =
+    row.guarantorTypeKey === 'organization'
+      ? (row.organizationName ?? row.email)
+      : (formatPersonName(row.civility, row.firstName, row.lastName) ?? row.email);
+
+  return { email: row.email, displayName };
+}
+
+/**
+ * Récupère le nom d'affichage du bailleur (depuis `landlord_profiles`). Si le
+ * profil n'existe pas ou est incomplet, on tombe sur l'email — moins joli mais
+ * suffisant pour identifier l'expéditeur dans l'email d'invitation.
+ */
+async function fetchInviterDisplayName(currentUserId: string): Promise<string> {
+  const [row] = await db
+    .select({
+      civility: landlordProfiles.civility,
+      firstName: landlordProfiles.firstName,
+      lastName: landlordProfiles.lastName,
+      email: users.email,
+    })
+    .from(users)
+    .leftJoin(landlordProfiles, eq(landlordProfiles.userId, users.id))
+    .where(eq(users.id, currentUserId))
+    .limit(1);
+
+  if (!row) {
+    // Très défensif — l'auth garantit qu'on ait un user, mais on évite un crash
+    // pour un cas hypothétique.
+    return 'Votre bailleur';
+  }
+
+  return (
+    formatPersonName(row.civility, row.firstName, row.lastName) ?? row.email ?? 'Votre bailleur'
+  );
+}
+
+/** Concatène civilité / prénom / nom en un libellé lisible, ou null si vide. */
+function formatPersonName(
+  civility: string | null,
+  firstName: string | null,
+  lastName: string | null,
+): string | null {
+  const parts = [civility, firstName, lastName].filter((p): p is string => Boolean(p?.trim()));
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.join(' ');
 }
 
 /**

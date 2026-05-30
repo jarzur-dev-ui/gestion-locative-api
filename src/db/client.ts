@@ -10,6 +10,7 @@ import { leaseGuarantors } from './schema/lease-guarantors.js';
 import { leaseTenants } from './schema/lease-tenants.js';
 import { leases } from './schema/leases.js';
 import { properties } from './schema/properties.js';
+import { rentPeriods } from './schema/rent-periods.js';
 import { sessions } from './schema/sessions.js';
 import { tenants } from './schema/tenants.js';
 import { users } from './schema/users.js';
@@ -27,6 +28,7 @@ const schema = {
   invitations,
   documents,
   documentShares,
+  rentPeriods,
 };
 
 const queryClient = postgres(env.DATABASE_URL, {

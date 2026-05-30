@@ -14,7 +14,9 @@ import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { landlordProfilesRoutes } from './modules/landlord-profiles/landlord-profiles.routes.js';
 import { leasesRoutes } from './modules/leases/leases.routes.js';
 import { propertiesRoutes } from './modules/properties/properties.routes.js';
+import { rentPeriodsRoutes } from './modules/rent-periods/rent-periods.routes.js';
 import { tenantsRoutes } from './modules/tenants/tenants.routes.js';
+import { startScheduler, stopScheduler } from './scheduler/index.js';
 import type { AppEnv } from './types/app-env.js';
 
 const app = new OpenAPIHono<AppEnv>();
@@ -62,6 +64,7 @@ app.route('/api/invitations', invitationsRoutes);
 app.route('/api/documents', documentsRoutes);
 app.route('/api/document-types', documentTypesRoutes);
 app.route('/api/document-shares', documentSharesRoutes);
+app.route('/api/rent-periods', rentPeriodsRoutes);
 app.route('/share', sharePublicRoutes);
 
 app.doc('/openapi.json', {
@@ -77,4 +80,13 @@ app.doc('/openapi.json', {
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   logger.info(`🚀 API démarrée sur http://localhost:${info.port}`);
   logger.info(`📘 Spec OpenAPI : http://localhost:${info.port}/openapi.json`);
+  startScheduler();
 });
+
+const shutdown = async (signal: string): Promise<void> => {
+  logger.info({ signal }, 'shutdown initié');
+  await stopScheduler();
+  process.exit(0);
+};
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
