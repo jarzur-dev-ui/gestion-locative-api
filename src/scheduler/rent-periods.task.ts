@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { leases } from '../db/schema/leases.js';
 import { properties } from '../db/schema/properties.js';
 import { rentPeriods } from '../db/schema/rent-periods.js';
+import { recordSchedulerAudit } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import {
   computeDueDate,
@@ -111,6 +112,16 @@ async function sendDueNotices(): Promise<{ sent: number; failed: number }> {
     try {
       await sendNotice(id, ownerUserId);
       sent += 1;
+      // Audit non-bloquant : le helper avale toute exception (cf. recordSchedulerAudit).
+      // `automated: true` permet de distinguer côté investigation un envoi
+      // automatique d'un envoi manuel (lui audité par `rent_period.send_notice`
+      // côté route avec `actorType = user`).
+      await recordSchedulerAudit({
+        action: 'rent_period.send_notice',
+        entityType: 'rent_period',
+        entityId: id,
+        payload: { automated: true },
+      });
     } catch (err) {
       failed += 1;
       logger.error({ err, rentPeriodId: id }, 'scheduler: send-notice failed');

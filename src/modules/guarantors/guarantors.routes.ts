@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -189,6 +190,11 @@ guarantorsRoutes.openapi(createGuarantorRoute, async (c) => {
   const user = c.get('user')!;
   const data = c.req.valid('json');
   const row = await create(user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'guarantor.create',
+    entityType: 'guarantor',
+    entityId: row.id,
+  });
   return c.json(toPublicGuarantor(row), 201);
 });
 
@@ -204,6 +210,12 @@ guarantorsRoutes.openapi(updateGuarantorRoute, async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const row = await patch(id, user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'guarantor.update',
+    entityType: 'guarantor',
+    entityId: row.id,
+    payload: { fields: Object.keys(data) },
+  });
   return c.json(toPublicGuarantor(row), 200);
 });
 
@@ -211,5 +223,10 @@ guarantorsRoutes.openapi(deleteGuarantorRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   await remove(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'guarantor.delete',
+    entityType: 'guarantor',
+    entityId: id,
+  });
   return c.body(null, 204);
 });

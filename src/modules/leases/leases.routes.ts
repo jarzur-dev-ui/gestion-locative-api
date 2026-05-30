@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -233,6 +234,11 @@ leasesRoutes.openapi(createRouteDef, async (c) => {
   const user = c.get('user')!;
   const data = c.req.valid('json');
   const row = await create(user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'lease.create',
+    entityType: 'lease',
+    entityId: row.id,
+  });
   return c.json(row, 201);
 });
 
@@ -248,6 +254,12 @@ leasesRoutes.openapi(updateRoute, async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const row = await patch(id, user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'lease.update',
+    entityType: 'lease',
+    entityId: row.id,
+    payload: { fields: Object.keys(data) },
+  });
   return c.json(row, 200);
 });
 
@@ -255,7 +267,17 @@ leasesRoutes.openapi(updateStatusRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const { statusKey } = c.req.valid('json');
+  // Capture du statut courant AVANT la transition : c'est indispensable pour
+  // pouvoir auditer la transition `from → to`. On accepte l'aller-retour DB
+  // supplémentaire car ces appels restent rares (changement de statut métier).
+  const before = await getByIdForOwner(id, user.id);
   const row = await updateStatus(id, user.id, statusKey);
+  await recordUserAudit(c, user.id, {
+    action: 'lease.status_change',
+    entityType: 'lease',
+    entityId: row.id,
+    payload: { from: before.statusKey, to: row.statusKey },
+  });
   return c.json(row, 200);
 });
 
@@ -263,5 +285,10 @@ leasesRoutes.openapi(deleteRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   await remove(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'lease.delete',
+    entityType: 'lease',
+    entityId: id,
+  });
   return c.body(null, 204);
 });

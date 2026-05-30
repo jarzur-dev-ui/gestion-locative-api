@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -176,6 +177,11 @@ tenantsRoutes.openapi(createTenantRoute, async (c) => {
   const user = c.get('user')!;
   const data = c.req.valid('json');
   const tenant = await create(user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'tenant.create',
+    entityType: 'tenant',
+    entityId: tenant.id,
+  });
   return c.json(toPublicTenant(tenant), 201);
 });
 
@@ -191,6 +197,12 @@ tenantsRoutes.openapi(updateTenantRoute, async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const tenant = await patch(id, user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'tenant.update',
+    entityType: 'tenant',
+    entityId: tenant.id,
+    payload: { fields: Object.keys(data) },
+  });
   return c.json(toPublicTenant(tenant), 200);
 });
 
@@ -198,5 +210,10 @@ tenantsRoutes.openapi(deleteTenantRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   await deleteTenant(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'tenant.delete',
+    entityType: 'tenant',
+    entityId: id,
+  });
   return c.body(null, 204);
 });

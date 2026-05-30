@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -88,7 +89,7 @@ export const invitationsRoutes = new OpenAPIHono<AppEnv>();
 // `c.get('user')` y reste null car aucun cookie de session n'est attendu.
 invitationsRoutes.openapi(acceptInvitationRoute, async (c) => {
   const { token, password } = c.req.valid('json');
-  const user = await acceptInvitation({ token, password });
+  const { user, targetType, targetId } = await acceptInvitation({ token, password });
 
   // La session est créée APRÈS la transaction d'acceptation : on évite ainsi
   // qu'un échec d'insertion de session ne rollback la création de compte
@@ -99,6 +100,16 @@ invitationsRoutes.openapi(acceptInvitationRoute, async (c) => {
     ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
   });
   setSessionCookie(c, session.id);
+
+  // Audit : l'acteur est le user fraîchement créé (pas le bailleur qui a
+  // invité). On enregistre la cible métier dans le payload pour pouvoir
+  // remonter le lien invitation → entité côté investigation.
+  await recordUserAudit(c, user.id, {
+    action: 'invitation.accept',
+    entityType: 'user',
+    entityId: user.id,
+    payload: { targetType, targetId },
+  });
 
   return c.json({ user: toPublicUser(user) }, 200);
 });
@@ -119,6 +130,16 @@ invitationsRoutes.openapi(createInvitationRoute, async (c) => {
     currentUserId: user.id,
     targetType,
     targetId,
+  });
+
+  // On audite la création — l'`entityId` est volontairement tronqué aux 12
+  // premiers caractères du token : suffisant pour corréler côté investigation
+  // sans permettre d'usurper l'invitation depuis les logs.
+  await recordUserAudit(c, user.id, {
+    action: 'invitation.create',
+    entityType: 'invitation',
+    entityId: invitation.token.slice(0, 12),
+    payload: { targetType, targetId },
   });
 
   return c.json(

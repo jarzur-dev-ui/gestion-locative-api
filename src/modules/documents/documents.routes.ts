@@ -2,6 +2,7 @@ import { Readable } from 'node:stream';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { stream as honoStream } from 'hono/streaming';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -386,6 +387,13 @@ documentsRoutes.openapi(uploadRoute, async (c) => {
     periodMonth,
   });
 
+  await recordUserAudit(c, user.id, {
+    action: 'document.upload',
+    entityType: 'document',
+    entityId: doc.id,
+    payload: { type: doc.documentTypeKey, leaseId: doc.leaseId, propertyId: doc.propertyId },
+  });
+
   return c.json(toPublicDocument(doc), 201);
 });
 
@@ -444,6 +452,13 @@ documentsRoutes.openapi(updateStatusRoute, async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const row = await updateStatus(id, user, data);
+  // L'action d'audit dépend du verbe métier : validate vs reject. On lit
+  // directement le statut du body validé (Zod garantit `validated`|`rejected`).
+  await recordUserAudit(c, user.id, {
+    action: data.statusKey === 'validated' ? 'document.validate' : 'document.reject',
+    entityType: 'document',
+    entityId: row.id,
+  });
   return c.json(toPublicDocument(row), 200);
 });
 
@@ -451,6 +466,11 @@ documentsRoutes.openapi(deleteRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   await remove(id, user);
+  await recordUserAudit(c, user.id, {
+    action: 'document.delete',
+    entityType: 'document',
+    entityId: id,
+  });
   return c.body(null, 204);
 });
 
@@ -458,6 +478,11 @@ documentsRoutes.openapi(restoreRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const doc = await restoreDocument(id, user);
+  await recordUserAudit(c, user.id, {
+    action: 'document.restore',
+    entityType: 'document',
+    entityId: doc.id,
+  });
   return c.json(toPublicDocument(doc), 200);
 });
 

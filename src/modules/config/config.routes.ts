@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import type { AppEnv } from '../../types/app-env.js';
 import {
   ConfigEntrySchema,
@@ -93,5 +94,15 @@ configRoutes.openapi(upsertRoute, async (c) => {
   }
   // Use validation.value (potentially transformed by Zod) instead of body.value
   const entry = await upsertByKey(key, validation.value, body.description);
+  // On évite de logger la valeur brute : certaines clés peuvent contenir
+  // des secrets futurs et la valeur précise est de toute façon récupérable
+  // par GET /api/config/:key au moment de l'investigation. On garde
+  // uniquement la description si elle est présente.
+  await recordUserAudit(c, user.id, {
+    action: 'config.update',
+    entityType: 'config_entry',
+    entityId: key,
+    payload: { description: body.description },
+  });
   return c.json(toPublicEntry(entry), 200);
 });

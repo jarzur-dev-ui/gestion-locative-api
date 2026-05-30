@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -91,5 +92,10 @@ landlordProfilesRoutes.openapi(upsertProfileRoute, async (c) => {
   const user = c.get('user')!;
   const data = c.req.valid('json');
   const profile = await upsertByUserId(user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'landlord_profile.update',
+    entityType: 'landlord_profile',
+    entityId: user.id,
+  });
   return c.json(toPublicLandlordProfile(profile), 200);
 });

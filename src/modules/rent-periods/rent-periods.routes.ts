@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -256,6 +257,12 @@ rentPeriodsRoutes.openapi(sendNoticeRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const row = await sendNotice(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'rent_period.send_notice',
+    entityType: 'rent_period',
+    entityId: row.id,
+    payload: { periodMonth: row.periodMonth, leaseId: row.leaseId },
+  });
   return c.json(row, 200);
 });
 
@@ -263,6 +270,11 @@ rentPeriodsRoutes.openapi(markPaidRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const row = await markPaid(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'rent_period.mark_paid',
+    entityType: 'rent_period',
+    entityId: row.id,
+  });
   return c.json(row, 200);
 });
 
@@ -270,5 +282,10 @@ rentPeriodsRoutes.openapi(markUnpaidRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const row = await markUnpaid(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'rent_period.mark_unpaid',
+    entityType: 'rent_period',
+    entityId: row.id,
+  });
   return c.json(row, 200);
 });

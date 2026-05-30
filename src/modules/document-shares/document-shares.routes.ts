@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth, requireRole } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -124,6 +125,15 @@ documentSharesRoutes.openapi(createShareRoute, async (c) => {
     documentId,
     ttlDays,
   });
+  // On audite la création — l'`entityId` est le token tronqué (mêmes raisons
+  // de sécurité que pour les invitations : on garde une trace corrélable
+  // sans permettre la reconstruction du token complet depuis les logs).
+  await recordUserAudit(c, user.id, {
+    action: 'document_share.create',
+    entityType: 'document_share',
+    entityId: share.token.slice(0, 12),
+    payload: { documentId, ttlDays },
+  });
   return c.json(
     {
       token: share.token,
@@ -151,5 +161,10 @@ documentSharesRoutes.openapi(revokeShareRoute, async (c) => {
   }
   const { token } = c.req.valid('param');
   await revokeShare(token, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'document_share.revoke',
+    entityType: 'document_share',
+    entityId: token.slice(0, 12),
+  });
   return c.body(null, 204);
 });

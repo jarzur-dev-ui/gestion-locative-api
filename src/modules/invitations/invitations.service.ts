@@ -229,10 +229,18 @@ function formatPersonName(
  * session ne doit pas faire perdre le compte fraîchement créé — l'utilisateur
  * pourra simplement se logger).
  */
+export type AcceptInvitationResult = {
+  user: User;
+  /** Type de la cible liée au compte fraîchement créé (utile pour l'audit). */
+  targetType: 'tenant' | 'guarantor';
+  /** Id de la cible liée au compte fraîchement créé. */
+  targetId: string;
+};
+
 export async function acceptInvitation(opts: {
   token: string;
   password: string;
-}): Promise<User> {
+}): Promise<AcceptInvitationResult> {
   const passwordHash = await hashPassword(opts.password);
 
   return db.transaction(async (tx) => {
@@ -343,6 +351,10 @@ export async function acceptInvitation(opts: {
       }
     }
 
-    return user;
+    return {
+      user,
+      targetType: invitation.targetTypeKey,
+      targetId: invitation.targetId,
+    };
   });
 }

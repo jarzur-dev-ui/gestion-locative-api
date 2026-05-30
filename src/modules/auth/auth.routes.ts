@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { recordUserAudit } from '../../lib/audit.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { authenticateByEmailAndPassword, toPublicUser } from './auth.service.js';
 import {
@@ -77,15 +78,23 @@ authRoutes.openapi(loginRoute, async (c) => {
     ipAddress: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
   });
   setSessionCookie(c, session.id);
+  await recordUserAudit(c, user.id, { action: 'login' });
   return c.json({ user: toPublicUser(user) }, 200);
 });
 
 authRoutes.openapi(logoutRoute, async (c) => {
   const token = readSessionCookie(c);
+  // On capture l'identité user AVANT de supprimer la session — sinon
+  // l'audit ne saurait pas qui s'est déconnecté (le middleware `requireAuth`
+  // n'est pas appliqué sur /logout pour rester idempotent côté front).
+  const currentUser = c.get('user');
   if (token) {
     await deleteSession(token);
   }
   clearSessionCookie(c);
+  if (currentUser) {
+    await recordUserAudit(c, currentUser.id, { action: 'logout' });
+  }
   return c.body(null, 204);
 });
 
