@@ -53,6 +53,7 @@ pnpm dev             # serveur sur http://localhost:3000
 | `pnpm format` | Formatter (Biome) |
 | `pnpm typecheck` | Vérification de types sans build |
 | `pnpm test` | Tests Vitest |
+| `pnpm create-user <email> <password> <role>` | Crée/réinitialise un utilisateur (rôle : `landlord` / `tenant` / `guarantor`). Utile pour le bootstrap initial ou le dev. |
 
 ## Structure
 

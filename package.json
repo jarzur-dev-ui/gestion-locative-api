@@ -16,7 +16,8 @@
     "test": "vitest",
     "lint": "biome check src",
     "format": "biome format --write src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "create-user": "tsx scripts/create-user.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

@@ -4,10 +4,14 @@ import { cors } from 'hono/cors';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
+import { sessionMiddleware } from './middleware/session.js';
+import { authRoutes } from './modules/auth/auth.routes.js';
+import type { AppEnv } from './types/app-env.js';
 
-const app = new OpenAPIHono();
+const app = new OpenAPIHono<AppEnv>();
 
 app.use('*', cors({ origin: env.CORS_ORIGIN, credentials: true }));
+app.use('*', sessionMiddleware);
 app.onError(errorHandler);
 
 const HealthResponseSchema = z
@@ -38,6 +42,8 @@ app.openapi(healthRoute, (c) =>
     uptime: process.uptime(),
   }),
 );
+
+app.route('/api/auth', authRoutes);
 
 app.doc('/openapi.json', {
   openapi: '3.0.0',
