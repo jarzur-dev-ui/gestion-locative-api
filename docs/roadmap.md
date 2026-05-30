@@ -139,6 +139,20 @@ Mise à jour : 2026-05-30.
 - [ ] **P2 — Consistency pass sur les middlewares de rôle** : harmoniser entre les 6 modules (certains utilisent `requireRole`, d'autres inlinent le check). Lance un agent dédié pour normaliser.
 - [ ] **Junction update diff** : dans `leases.update`, diffuser les sets tenant/guarantor au lieu de delete-then-insert systématique (économise des writes inutiles).
 
+#### Items ajoutés post-revue Milestone 5 (config_entries)
+
+🔴 **Bloquants multi-user** :
+
+- [ ] **R14 — Validation Zod par-clé sur PUT `/api/config/:key`** : actuellement `value` accepte n'importe quel JSON. Un bailleur peut écraser `lease.types` avec une chaîne et casser le rendu front. **Fix** : table de mapping `key → schema` (ex. `lease.default_payment_day` → `z.number().int().min(1).max(31)`), refuser 400 si non-conforme.
+- [ ] **R15 — Scoping multi-bailleur de `config_entries`** : actuellement N'IMPORTE QUEL landlord écrase la config GLOBALE. **Fix multi-user** : `landlord_user_id` FK + PRIMARY KEY composite `(landlord_user_id, key)` ; OU séparer un rôle `admin` distinct (seul autorisé à update).
+
+🟡 **Améliorations** :
+
+- [ ] **P19 — Wrapping `{ config: ... }` sur GET /api/config** : workaround zod-openapi pour le typage `z.record`. Documenter dans la spec OpenAPI ou trouver mieux (passthrough manuel ?).
+- [ ] **P21 — Versioning des entrées** : pas de trace des updates précédentes. Couvert par `audit_logs` (P5).
+
+---
+
 #### Items ajoutés post-revue Milestone 4 (rent_periods + scheduler + PDF + mailer)
 
 🔴 **Bloquants avant multi-user / SaaS** :

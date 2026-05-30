@@ -29,6 +29,13 @@
       "when": 1780178088770,
       "tag": "0003_small_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780178796789,
+      "tag": "0004_flimsy_synch",
+      "breakpoints": true
     }
   ]
 }
