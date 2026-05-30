@@ -15,6 +15,13 @@
       "when": 1780173641428,
       "tag": "0001_absurd_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780175091367,
+      "tag": "0002_easy_jane_foster",
+      "breakpoints": true
     }
   ]
 }

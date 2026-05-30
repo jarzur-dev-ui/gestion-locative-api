@@ -1,6 +1,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../config/env.js';
+import { documentShares } from './schema/document-shares.js';
+import { documents } from './schema/documents.js';
 import { guarantors } from './schema/guarantors.js';
 import { invitations } from './schema/invitations.js';
 import { landlordProfiles } from './schema/landlord-profiles.js';
@@ -23,6 +25,8 @@ const schema = {
   leaseTenants,
   leaseGuarantors,
   invitations,
+  documents,
+  documentShares,
 };
 
 const queryClient = postgres(env.DATABASE_URL, {

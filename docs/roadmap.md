@@ -139,6 +139,26 @@ Mise à jour : 2026-05-30.
 - [ ] **P2 — Consistency pass sur les middlewares de rôle** : harmoniser entre les 6 modules (certains utilisent `requireRole`, d'autres inlinent le check). Lance un agent dédié pour normaliser.
 - [ ] **Junction update diff** : dans `leases.update`, diffuser les sets tenant/guarantor au lieu de delete-then-insert systématique (économise des writes inutiles).
 
+#### Items ajoutés post-revue Milestone 3 (documents + storage + shares)
+
+🔴 **Bloquants avant multi-user / SaaS** :
+
+- [ ] **R6 — Pas de transaction sur l'upload de document** : entre `storeFile` (volume) et l'INSERT (BDD), un crash process laisse un fichier orphelin. Cleanup best-effort sur erreur DB existe mais ne couvre pas le crash. **Fix** : cron quotidien qui scanne le volume et supprime les fichiers sans référence dans `documents.file_path`. Ou pattern staging dir + move atomique.
+- [ ] **R7 — Hard delete documents → perte irrécupérable** : `DELETE /api/documents/:id` efface fichier ET row DB. Aucune récupération en cas de litige tardif. **Fix** : soft delete via colonnes `deleted_at` / `deleted_by_user_id` + purge physique différée (90j) via cron. Les colonnes `cancelledAt/cancelledByUserId/cancellationReason` existent déjà — à réutiliser ou ajouter des colonnes spécifiques `deletedAt`.
+- [ ] **R8 — Pas de quota par bailleur** : 1000 fichiers × 20 Mo = 20 Go sans plafond. Bloquant en SaaS. **Fix** : colonne `total_storage_bytes` sur `landlord_profiles` mise à jour atomiquement à chaque upload/delete, refus 413 au-delà d'un quota configurable (ex. 1 Go).
+- [ ] **R9 — Pas de scan antivirus** : un upload locataire/garant malicieux pourrait être téléchargé puis ouvert côté client → exposition. **Fix** : container ClamAV dédié, scan via lib `clamscan` en post-upload async, marquage `quarantined` si infecté. Acceptable solo, **non négociable multi-user**.
+
+🟡 **Améliorations sécurité/perf à programmer en MVP** :
+
+- [ ] **P7 — Pagination sur `GET /api/documents`** : actuellement retourne tout. À 5 ans × baux × quittances = 6000+ documents en une réponse. Cursor-based pagination (`?limit=50&cursor=<uuid>`), pattern Drizzle-friendly via `where(gt(id, cursor)).limit(limit + 1)`.
+- [ ] **P9 — Contrainte d'unicité `(lease_id, document_type_key, period_month)`** : prévient les doublons accidentels de quittance pour le même mois. Sera implicitement enforcée par M4 via `rent_periods.receipt_document_id` UNIQUE — sinon ajouter `UNIQUE INDEX ... WHERE period_month IS NOT NULL`.
+- [ ] **P12 — Mime type sniffing** : actuellement on fait confiance au `Content-Type` du client. Ajouter `file-type` (lib qui détecte via magic bytes) pour rejeter les binaires déguisés en PDF. Pas d'exécution côté serveur donc impact contenu, pas systèmique — mais hygiène propre.
+
+🟢 **Trade-offs conscients à documenter** :
+
+- **P10 — `recordShareAccess` fire-and-forget** : si l'incrément du `access_count` échoue, le download passe quand même. Trade-off audit-vs-UX assumé. À noter dans le manuel d'exploitation que ce compteur n'est **pas** une source de vérité absolue.
+- **P11 — Pas d'historique des transitions de statut documents** : si un doc fait `pending → validated → rejected → validated`, seul le dernier état est en BDD. Sera couvert par la table `audit_logs` de P5.
+
 ---
 
 ### Milestone 3 — Documents + upload + partage

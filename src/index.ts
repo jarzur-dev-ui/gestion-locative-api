@@ -6,6 +6,9 @@ import { logger } from './lib/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { sessionMiddleware } from './middleware/session.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { documentSharesRoutes } from './modules/document-shares/document-shares.routes.js';
+import { sharePublicRoutes } from './modules/document-shares/share-public.routes.js';
+import { documentTypesRoutes, documentsRoutes } from './modules/documents/documents.routes.js';
 import { guarantorsRoutes } from './modules/guarantors/guarantors.routes.js';
 import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { landlordProfilesRoutes } from './modules/landlord-profiles/landlord-profiles.routes.js';
@@ -56,6 +59,10 @@ app.route('/api/tenants', tenantsRoutes);
 app.route('/api/guarantors', guarantorsRoutes);
 app.route('/api/leases', leasesRoutes);
 app.route('/api/invitations', invitationsRoutes);
+app.route('/api/documents', documentsRoutes);
+app.route('/api/document-types', documentTypesRoutes);
+app.route('/api/document-shares', documentSharesRoutes);
+app.route('/share', sharePublicRoutes);
 
 app.doc('/openapi.json', {
   openapi: '3.0.0',
