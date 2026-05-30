@@ -169,24 +169,80 @@ Mise à jour : 2026-05-30.
 
 ### Milestone 7 — Déploiement prod
 
-**Backend**
-- [ ] `Dockerfile` multi-stage avec Puppeteer (Chromium installé)
-- [ ] `docker-compose` prod (api + postgres + volumes) à intégrer dans ton repo infra
-- [ ] CI GitHub Actions / GitLab CI : lint + typecheck + tests + build image
-- [ ] Configuration des secrets (`COOKIE_SECRET`, `DATABASE_URL`, SMTP) via secrets Docker ou fichier hors-git
+> ⚠ **Statut : rien n'est en place.** Tout ce qui est listé ici est à construire.
 
-**Frontend**
-- [ ] Build statique pour prod, déployable sur le nginx existant
-- [ ] Variables d'env (`VITE_API_URL`)
-- [ ] CI GitHub Actions / GitLab CI : lint + typecheck + build
+#### Décisions à trancher avant de démarrer ce milestone
 
-**Infra (VPS)**
-- [ ] Provisionner la BDD prod (cf. `docs/database-setup.md`)
-- [ ] Configurer nginx : `gestion.zeleph.fr` → frontend, `api.zeleph.fr` (ou `/api/*`) → backend
-- [ ] Configurer le volume Docker `gestion-locative-files`
-- [ ] Configurer SMTP (OVH, Brevo, Resend…)
-- [ ] Configurer le cron de backup quotidien Postgres + volume fichiers
-- [ ] HTTPS via Let's Encrypt (probablement déjà en place sur ton nginx)
+1. **Stratégie de déploiement**
+   - **(A) Déployer tôt et souvent** — setup complet immédiatement avec juste `/api/health` en prod, puis chaque feature suivante se déploie auto. ~2-3h d'investissement initial.
+   - **(B) Attendre Milestone 1+** — faire l'auth en local d'abord, puis setup prod ensuite.
+2. **Registry d'image Docker**
+   - GitHub Container Registry (`ghcr.io/jarzur-dev-ui/gestion-locative-api`)
+   - GitLab Container Registry (`registry.gitlab.exanders.fr/infrajo/gestion-locative-api`)
+   - Docker Hub
+3. **Domaine API**
+   - Sous-domaine séparé : `api.zeleph.fr` → backend, `gestion.zeleph.fr` → front
+   - Path : `gestion.zeleph.fr/api/*` → backend (plus simple côté cookies/CORS, recommandé)
+4. **CI primaire** (lint + typecheck + build + push image)
+   - GitHub Actions
+   - GitLab CI
+   - Les deux en parallèle (déclenchés par le dual-push)
+5. **Méthode de déploiement sur le VPS**
+   - SSH + `docker compose pull && up -d` manuel
+   - Webhook auto déclenché par CI (Watchtower, Portainer, ou script custom)
+   - Repo "infra" central avec `docker-compose.yml` versionné
+
+#### Backend — à construire
+
+- [ ] `Dockerfile` multi-stage (Node 22 slim)
+  - V1 : sans Puppeteer
+  - V2 (Milestone 4) : ajout de Chromium pour génération PDF (~+300 Mo)
+- [ ] Snippet `docker-compose` à intégrer côté infra (image registry, env vars, secrets, volume `gestion-locative-files`)
+- [ ] Workflow CI : `lint` → `typecheck` → `test` → `build image` → `push registry`
+- [ ] Stratégie de secrets : Docker secrets, ou fichier `.env` hors git avec `chmod 600`, ou Vault/Doppler
+- [ ] Doc `docs/deployment.md` : checklist du premier déploiement, génération du `COOKIE_SECRET`, procédure de rollback
+
+#### Frontend — à construire
+
+- [ ] Build statique pour prod, déployable sur le nginx existant ou via un container nginx-alpine
+- [ ] Variables d'env build-time (`VITE_API_URL`)
+- [ ] Workflow CI : `lint` → `typecheck` → `build` → upload artefact
+
+#### Infra (VPS) — à configurer
+
+- [ ] Provisionner la BDD prod (rôle `gestion_locative_app_prod`, base `gestion_locative_prod`, cf. `docs/database-setup.md`)
+- [ ] Configurer nginx :
+  - Reverse proxy `/api/*` → backend container (port 3000)
+  - Statique `/*` → frontend (container nginx ou dossier `dist/` direct)
+  - Trust proxy headers (`X-Forwarded-For`, `X-Forwarded-Proto`)
+  - Limites taille upload (multipart pour documents : 20 Mo conseillé)
+- [ ] Volume Docker `gestion-locative-files` créé sur l'hôte
+- [ ] HTTPS via Let's Encrypt (probablement déjà géré par ton nginx existant)
+- [ ] CORS : `CORS_ORIGIN=https://gestion.zeleph.fr` côté backend
+- [ ] Cookie domain : aligner avec le domaine front (`.zeleph.fr` si sous-domaines, sinon laisser implicite)
+
+#### SMTP
+
+- [ ] Choisir le provider : OVH SMTP (inclus avec ton hébergement), Brevo, Resend, Mailgun…
+- [ ] Configurer les variables : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
+- [ ] Configurer SPF / DKIM / DMARC sur le domaine `zeleph.fr` pour la délivrabilité
+- [ ] Tester l'envoi (template invitation magic link)
+
+#### Backups & Observabilité
+
+- [ ] Cron quotidien `pg_dump` → fichier daté → upload distant (S3-compatible, Backblaze, autre VPS)
+- [ ] Cron hebdo `tar` du volume `gestion-locative-files`
+- [ ] Rotation (garder N derniers jours)
+- [ ] Procédure de restauration testée au moins 1 fois
+- [ ] Logs structurés (`pino` JSON) → fichier ou stdout, scrapés par un agent (Loki, Vector, journald…)
+- [ ] Healthcheck Docker pointant sur `/api/health` (auto-restart si KO)
+
+#### Migration depuis le localStorage (Milestone 6) — checklist prod
+
+- [ ] Exporter le `localStorage` du navigateur depuis ton app actuelle
+- [ ] Importer via `POST /api/migration/import`
+- [ ] Vérifier que tous les baux apparaissent
+- [ ] Envoyer les invitations aux locataires actuels
 
 ---
 
