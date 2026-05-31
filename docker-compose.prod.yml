@@ -49,9 +49,10 @@ services:
       # Permet au container de joindre le Postgres qui tourne sur le host
       - "host.docker.internal:host-gateway"
     ports:
-      # Exposé sur 127.0.0.1 uniquement — le nginx du host fera le reverse proxy.
-      # Ne JAMAIS exposer 3000 en 0.0.0.0 (pas d'HTTPS direct, pas de rate limiting).
-      - "127.0.0.1:3000:3000"
+      # Exposé sur 127.0.0.1 uniquement — le nginx host fera le reverse proxy HTTPS.
+      # Ne JAMAIS exposer en 0.0.0.0 (pas d'HTTPS direct, pas de rate limiting).
+      # Port 3002 côté host car 3000 est déjà pris par ergodocker-front-1 sur ce VPS.
+      - "127.0.0.1:3002:3000"
 
 volumes:
   gl_files:
