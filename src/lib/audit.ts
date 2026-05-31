@@ -34,11 +34,13 @@ export type AuditAction =
   | 'document_share.revoke'
   | 'invitation.create'
   | 'invitation.accept'
+  | 'rent_period.update'
   | 'rent_period.mark_paid'
   | 'rent_period.mark_unpaid'
   | 'rent_period.send_notice'
   | 'config.update'
-  | 'landlord_profile.update';
+  | 'landlord_profile.update'
+  | 'migration.import';
 
 export type AuditEntry = {
   action: AuditAction;

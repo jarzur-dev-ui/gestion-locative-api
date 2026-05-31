@@ -28,6 +28,7 @@ Frontend  ──REST + OpenAPI──►  API Hono  ──Drizzle──►  Postg
 Prérequis : Node 22+, pnpm, accès à une base PostgreSQL de dev.
 
 > 📘 Pour provisionner la base de données (rôle, base, droits, `DATABASE_URL`, backup) : voir [`docs/database-setup.md`](./docs/database-setup.md).
+> 🚀 Pour déployer en prod sur le VPS (Dockerfile, nginx, certbot, backups) : voir [`docs/deployment.md`](./docs/deployment.md).
 > 🗺️ État du projet et reste à faire (front + back) : voir [`docs/roadmap.md`](./docs/roadmap.md).
 
 ```bash

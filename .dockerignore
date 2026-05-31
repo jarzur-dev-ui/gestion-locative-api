@@ -1,0 +1,20 @@
+# Exclus du contexte Docker (économise du temps + évite les fuites)
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.git
+.gitignore
+.github
+.gitlab-ci.yml
+*.log
+.DS_Store
+.vscode
+.idea
+coverage
+docs/
+*.md
+!README.md
+var/
+scripts/dev/

@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 
+import { recordUserAudit } from '../../lib/audit.js';
 import { requireRole } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 
@@ -36,5 +37,15 @@ migrationRoutes.openapi(importRoute, async (c) => {
 
   const body = c.req.valid('json');
   const report = await importLegacy(user.id, body);
+  await recordUserAudit(c, user.id, {
+    action: 'migration.import',
+    payload: {
+      bauxCount: body.baux.length,
+      properties: report.properties,
+      tenants: report.tenants,
+      leases: report.leases,
+      warningsCount: report.warnings.length,
+    },
+  });
   return c.json(report, 200);
 });

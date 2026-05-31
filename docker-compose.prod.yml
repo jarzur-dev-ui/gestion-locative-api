@@ -1,0 +1,62 @@
+# docker-compose pour la prod sur le VPS zeleph.fr.
+#
+# À déployer dans `/root/persistent/gestion-locative-api/` sur le VPS.
+# Branchement sur l'infra existante :
+#   - Réutilise le Postgres déjà en place dans `/root/persistent/postgresql/`
+#     via le réseau Docker partagé (ou via host network)
+#   - Le nginx existant (`/root/persistent/nginx/`) ajoutera un server block
+#     pour `api.gestion-locative.zeleph.fr` qui proxy_pass vers ce container
+#
+# Lancement :
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Mise à jour (après pull de l'image depuis le registry) :
+#   docker compose -f docker-compose.prod.yml pull && \
+#     docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+services:
+  api:
+    # En CI/CD, l'image sera buildée et poussée vers ghcr.io ou registry GitLab.
+    # En attendant le pipeline, build local : `docker compose build`
+    image: ${API_IMAGE:-gestion-locative-api:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gestion-locative-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: info
+      # Le Postgres tourne déjà sur le VPS (host network OU container existant).
+      # Vu que Postgres écoute sur localhost:5432 du VPS, on utilise host.docker.internal
+      # qui pointe vers le host depuis le container (configuré via extra_hosts).
+      DATABASE_URL: ${DATABASE_URL}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      CORS_ORIGIN: https://gestion-locative.zeleph.fr
+      SMTP_HOST: ${SMTP_HOST:-ssl0.ovh.net}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-noreply@zeleph.fr}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM:-Gestion Locative <noreply@zeleph.fr>}
+      FILES_STORAGE_PATH: /var/lib/gestion-locative/files
+    volumes:
+      # Volume persistant pour les documents uploadés (PDFs, signatures…)
+      - gl_files:/var/lib/gestion-locative/files
+    networks:
+      - gl_net
+    extra_hosts:
+      # Permet au container de joindre le Postgres qui tourne sur le host
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Exposé sur 127.0.0.1 uniquement — le nginx du host fera le reverse proxy.
+      # Ne JAMAIS exposer 3000 en 0.0.0.0 (pas d'HTTPS direct, pas de rate limiting).
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  gl_files:
+    name: gestion-locative-files
+
+networks:
+  gl_net:
+    name: gestion-locative-net

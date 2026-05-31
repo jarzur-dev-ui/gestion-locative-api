@@ -250,6 +250,12 @@ rentPeriodsRoutes.openapi(updateRoute, async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const row = await updateAdjustments(id, user.id, data);
+  await recordUserAudit(c, user.id, {
+    action: 'rent_period.update',
+    entityType: 'rent_period',
+    entityId: id,
+    payload: { adjustmentsCount: data.adjustments.length },
+  });
   return c.json(row, 200);
 });
 
