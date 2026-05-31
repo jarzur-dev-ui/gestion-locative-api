@@ -37,7 +37,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 
 # Install avec lockfile strict (pas de mise à jour silencieuse en CI)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ─── Stage 2 — build : compile TypeScript en JS via tsc ───
 FROM deps AS build
@@ -76,7 +76,7 @@ RUN corepack enable
 
 # Copie les manifests et installe SEULEMENT les prod deps
 COPY --chown=nodeapp:nodeapp package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile --ignore-scripts --prod
 
 # Copie le build TypeScript compilé + les migrations Drizzle (consommées au runtime)
 COPY --from=build --chown=nodeapp:nodeapp /app/dist ./dist
