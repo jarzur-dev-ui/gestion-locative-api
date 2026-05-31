@@ -16,6 +16,7 @@ import { invitationsRoutes } from './modules/invitations/invitations.routes.js';
 import { landlordProfilesRoutes } from './modules/landlord-profiles/landlord-profiles.routes.js';
 import { leasesRoutes } from './modules/leases/leases.routes.js';
 import { meRoutes } from './modules/me/me.routes.js';
+import { migrationRoutes } from './modules/migration/migration.routes.js';
 import { propertiesRoutes } from './modules/properties/properties.routes.js';
 import { rentPeriodsRoutes } from './modules/rent-periods/rent-periods.routes.js';
 import { tenantsRoutes } from './modules/tenants/tenants.routes.js';
@@ -71,6 +72,7 @@ app.route('/api/rent-periods', rentPeriodsRoutes);
 app.route('/api/config', configRoutes);
 app.route('/api/audit-logs', auditLogsRoutes);
 app.route('/api/me', meRoutes);
+app.route('/api/migration', migrationRoutes);
 app.route('/share', sharePublicRoutes);
 
 app.doc('/openapi.json', {
