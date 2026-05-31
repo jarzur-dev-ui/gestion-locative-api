@@ -223,6 +223,50 @@ export async function listByOwner(
   return result;
 }
 
+/**
+ * Liste les baux où l'utilisateur courant est partie (locataire ou garant).
+ * Utilisé par le module `me` pour le dashboard locataire/garant.
+ */
+export async function listForParty(userId: string): Promise<LeasePublic[]> {
+  // Récupère les lease_ids où le user est dans tenants.user_id OU guarantors.user_id
+  const tenantLeaseRows = await db
+    .select({ leaseId: leaseTenants.leaseId })
+    .from(leaseTenants)
+    .innerJoin(tenants, eq(tenants.id, leaseTenants.tenantId))
+    .where(eq(tenants.userId, userId));
+
+  const guarantorLeaseRows = await db
+    .select({ leaseId: leaseGuarantors.leaseId })
+    .from(leaseGuarantors)
+    .innerJoin(guarantors, eq(guarantors.id, leaseGuarantors.guarantorId))
+    .where(eq(guarantors.userId, userId));
+
+  const leaseIds = Array.from(
+    new Set([
+      ...tenantLeaseRows.map((r) => r.leaseId),
+      ...guarantorLeaseRows.map((r) => r.leaseId),
+    ]),
+  );
+
+  if (leaseIds.length === 0) return [];
+
+  const rows = await db
+    .select()
+    .from(leases)
+    .where(inArray(leases.id, leaseIds))
+    .orderBy(desc(leases.createdAt));
+
+  const result: LeasePublic[] = [];
+  for (const lease of rows) {
+    const [tenantsList, guarantorsList] = await Promise.all([
+      loadTenantSummaries(lease.id),
+      loadGuarantorSummaries(lease.id),
+    ]);
+    result.push(toPublicLease(lease, tenantsList, guarantorsList));
+  }
+  return result;
+}
+
 export async function getByIdForOwner(id: string, userId: string): Promise<LeasePublic> {
   const lease = await getLeaseForOwner(id, userId);
   const [tenantsList, guarantorsList] = await Promise.all([
