@@ -1,7 +1,9 @@
 # Roadmap — État d'avancement & reste à faire
 
 Vue d'ensemble du projet `gestion-locative` (front) + `gestion-locative-api` (back).
-Mise à jour : 2026-05-30.
+Mise à jour : 2026-06-01.
+
+**Statut global** : Milestones **M1 → M7 ✅ terminées**. App live en prod sur `https://gestion-locative.zeleph.fr`. Reste à faire : **M7.5 — Hardening prod** (backups, certbot renew, SMTP, fix migrations Drizzle). Voir section dédiée plus bas.
 
 ---
 
@@ -300,84 +302,86 @@ Mise à jour : 2026-05-30.
 
 ---
 
-### Milestone 7 — Déploiement prod
+### Milestone 7 — Déploiement prod ✅ TERMINÉ (2026-06-01)
 
-> ⚠ **Statut : rien n'est en place.** Tout ce qui est listé ici est à construire.
+> Front et back live sur `https://gestion-locative.zeleph.fr` et `https://api.gestion-locative.zeleph.fr`. Login bailleur fonctionnel en prod.
 
-#### Décisions à trancher avant de démarrer ce milestone
+#### Décisions arrêtées
 
-1. **Stratégie de déploiement**
-   - **(A) Déployer tôt et souvent** — setup complet immédiatement avec juste `/api/health` en prod, puis chaque feature suivante se déploie auto. ~2-3h d'investissement initial.
-   - **(B) Attendre Milestone 1+** — faire l'auth en local d'abord, puis setup prod ensuite.
-2. **Registry d'image Docker**
-   - GitHub Container Registry (`ghcr.io/jarzur-dev-ui/gestion-locative-api`)
-   - GitLab Container Registry (`registry.gitlab.exanders.fr/infrajo/gestion-locative-api`)
-   - Docker Hub
-3. **Domaine API** ✅ Décidé : **`api.gestion-locative.zeleph.fr`**
+1. **Stratégie de déploiement** : (A) déploiement complet en une fois après M6
+2. **Registry d'image Docker** : `registry.exanders.fr/infrajo/gestion-locative*` (GitLab Container Registry)
+3. **Domaine** :
    - Front : `https://gestion-locative.zeleph.fr`
    - API : `https://api.gestion-locative.zeleph.fr`
-   - Cookie domain : `.gestion-locative.zeleph.fr` (autorise les 2 sous-domaines)
+   - Cookie domain : implicite (single-host par sous-domaine)
    - CORS_ORIGIN : `https://gestion-locative.zeleph.fr`
-4. **CI primaire** (lint + typecheck + build + push image)
-   - GitHub Actions
-   - GitLab CI
-   - Les deux en parallèle (déclenchés par le dual-push)
-5. **Méthode de déploiement sur le VPS**
-   - SSH + `docker compose pull && up -d` manuel
-   - Webhook auto déclenché par CI (Watchtower, Portainer, ou script custom)
-   - Repo "infra" central avec `docker-compose.yml` versionné
+4. **CI primaire** : GitLab CI (front auto via `.gitlab-ci.yml`, back manuel pour V1)
+5. **Méthode de déploiement** :
+   - Front : auto via GitLab CI (compile → buildx multi-arch → ssh deploy)
+   - Back : manuel (`scp` + `docker compose up -d` sur le VPS)
 
-#### Backend — à construire
+#### Backend — fait
 
-- [ ] `Dockerfile` multi-stage (Node 22 slim)
-  - V1 : sans Puppeteer
-  - V2 (Milestone 4) : ajout de Chromium pour génération PDF (~+300 Mo)
-- [ ] Snippet `docker-compose` à intégrer côté infra (image registry, env vars, secrets, volume `gestion-locative-files`)
-- [ ] Workflow CI : `lint` → `typecheck` → `test` → `build image` → `push registry`
-- [ ] Stratégie de secrets : Docker secrets, ou fichier `.env` hors git avec `chmod 600`, ou Vault/Doppler
-- [ ] Doc `docs/deployment.md` : checklist du premier déploiement, génération du `COOKIE_SECRET`, procédure de rollback
+- [x] `Dockerfile` multi-stage (Node 22 slim + Chromium pour Puppeteer)
+- [x] `docker-compose.prod.yml` (port `127.0.0.1:3002:3000`, `host.docker.internal`, volume `gestion-locative-files`)
+- [x] Doc `docs/deployment.md` (procédure complète + rollback)
+- [x] Secrets : `.env` hors git avec `chmod 600` sur `/root/persistent/gestion-locative-api/`
 
-#### Frontend — à construire
+#### Frontend — fait
 
-- [ ] Build statique pour prod, déployable sur le nginx existant ou via un container nginx-alpine
-- [ ] Variables d'env build-time (`VITE_API_URL`)
-- [ ] Workflow CI : `lint` → `typecheck` → `build` → upload artefact
+- [x] Build statique servi par container `nginx:stable-alpine`
+- [x] `VITE_API_URL` injecté au build via variable CI/CD GitLab
+- [x] CI : compile → docker-build multi-arch → deploy auto sur push `main`
 
-#### Infra (VPS) — à configurer
+#### Infra (VPS) — fait
 
-- [ ] Provisionner la BDD prod (rôle `gestion_locative_app_prod`, base `gestion_locative_prod`, cf. `docs/database-setup.md`)
-- [ ] Configurer nginx :
-  - Reverse proxy `/api/*` → backend container (port 3000)
-  - Statique `/*` → frontend (container nginx ou dossier `dist/` direct)
-  - Trust proxy headers (`X-Forwarded-For`, `X-Forwarded-Proto`)
-  - Limites taille upload (multipart pour documents : 20 Mo conseillé)
-- [ ] Volume Docker `gestion-locative-files` créé sur l'hôte
-- [ ] HTTPS via Let's Encrypt (probablement déjà géré par ton nginx existant)
-- [ ] CORS : `CORS_ORIGIN=https://gestion.zeleph.fr` côté backend
-- [ ] Cookie domain : aligner avec le domaine front (`.zeleph.fr` si sous-domaines, sinon laisser implicite)
+- [x] BDD prod `gestionlocative_prod` provisionnée (rôle dédié, password URL-encoded)
+- [x] nginx reverse proxy `api.gestion-locative.zeleph.fr` → `127.0.0.1:3002`
+- [x] Volume Docker `gestion-locative-files` créé
+- [x] HTTPS Let's Encrypt (webroot challenge, certs `/etc/letsencrypt/live/api.gestion-locative.zeleph.fr/`)
+- [x] CORS configuré
+- [x] Headers sécurité (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
+- [x] `client_max_body_size 25M`
 
-#### SMTP
+#### Migration localStorage — fait
 
-- [ ] Choisir le provider : OVH SMTP (inclus avec ton hébergement), Brevo, Resend, Mailgun…
-- [ ] Configurer les variables : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
-- [ ] Configurer SPF / DKIM / DMARC sur le domaine `zeleph.fr` pour la délivrabilité
-- [ ] Tester l'envoi (template invitation magic link)
+- [x] Bailleur prod créé (`bailleur@zeleph.fr`)
+- [x] 15 tables + 18 entrées de config seedées
+- [x] Données legacy migrées via `POST /api/migration/import`
 
-#### Backups & Observabilité
+---
 
-- [ ] Cron quotidien `pg_dump` → fichier daté → upload distant (S3-compatible, Backblaze, autre VPS)
-- [ ] Cron hebdo `tar` du volume `gestion-locative-files`
-- [ ] Rotation (garder N derniers jours)
-- [ ] Procédure de restauration testée au moins 1 fois
-- [ ] Logs structurés (`pino` JSON) → fichier ou stdout, scrapés par un agent (Loki, Vector, journald…)
-- [ ] Healthcheck Docker pointant sur `/api/health` (auto-restart si KO)
+### Milestone 7.5 — Hardening prod (post-déploiement)
 
-#### Migration depuis le localStorage (Milestone 6) — checklist prod
+> Liste issue de la revue critique de fin de M7 (2026-06-01). À traiter avant d'inviter de vrais locataires en prod.
 
-- [ ] Exporter le `localStorage` du navigateur depuis ton app actuelle
-- [ ] Importer via `POST /api/migration/import`
-- [ ] Vérifier que tous les baux apparaissent
-- [ ] Envoyer les invitations aux locataires actuels
+#### 🔴 Bloquants — à corriger avant usage réel
+
+- [ ] **H1 — Backup Postgres quotidien** : cron `pg_dump gestionlocative_prod | gzip > /backup/db-$(date +%F).sql.gz` + upload distant + rotation 30 jours. Sans ça, un crash VPS = perte totale.
+- [ ] **H2 — Backup volume documents** : cron hebdo `tar -czf /backup/files-$(date +%F).tar.gz /var/lib/docker/volumes/gestion-locative-files`. Contenu RGPD-sensible (RIB, pièces d'identité).
+- [ ] **H3 — Auto-renewal Let's Encrypt** : cron `certbot renew --webroot --webroot-path /root/persistent/nginx/www` (hebdo). Le cert actuel expire ~août 2026. Sans renewal, le site cassera silencieusement.
+- [ ] **H4 — SMTP configuré** : sans SMTP, le flux complet d'invitation locataire/garant (magic link mail) ne fonctionne pas. Choisir OVH/Brevo/Resend, configurer SPF/DKIM/DMARC sur `zeleph.fr`, remplir `SMTP_*` dans le `.env` prod.
+- [ ] **H5 — Fix `__drizzle_migrations`** : les 6 migrations ont été appliquées via `psql` direct, sans table de tracking peuplée. Prochaine `drizzle-kit migrate` voudra re-jouer → erreur "relation already exists". Action : insérer manuellement les 6 entrées avec les hashes de chaque fichier dans `__drizzle_migrations`.
+
+#### 🟡 Important — à planifier
+
+- [ ] **H6 — CI/CD pour l'API** : actuellement build manuel + scp. Symétriser sur le modèle front : `.gitlab-ci.yml` côté API avec `compile → docker-build → deploy` automatique sur push `main`.
+- [ ] **H7 — Monitoring/alerting** : healthcheck Docker en place mais aucune alerte. Brancher Uptime Kuma ou ping externe (Better Uptime gratuit, Healthchecks.io) sur `/api/health`.
+- [ ] **H8 — Logs centralisés** : `pino` JSON déjà émis sur stdout. Brancher un agent (Loki, Vector, journald → fichier).
+- [ ] **N12 — Endpoint upload signature bailleur** : TODO marqué dans `src/utils/bail-adapter.ts:86`. Permet au bailleur d'uploader sa signature scannée une fois pour qu'elle soit injectée auto dans le PDF du bail à l'impression.
+- [ ] **N13 — Tests E2E Playwright** : couvre les parcours bailleur (CRUD bail, mark-paid, génération quittance) et tenant (accept invitation, upload document, share document).
+- [ ] **M2.5 Wave 3** :
+  - R3 — FK polymorphique `invitations.target_id` (refactor en `target_tenant_id` + `target_guarantor_id`)
+  - R9 — Antivirus ClamAV sur les uploads documents
+  - R11 — Email retry queue (actuellement fire-and-forget, échec silencieux)
+  - R13 — Pool de browsers Puppeteer (actuellement 1 instance/process)
+
+#### 🟢 Dette acceptée pour V1
+
+- Pas de rate-limiting login (argon2id + HttpOnly cookie limite l'impact brute force)
+- `VITE_API_URL` hardcodé au build (rebuild si change d'URL — acceptable, ne change jamais)
+- Pas de Sentry (`docker logs` suffit pour V1)
+- Bundle 103 KB gzip avec code splitting
 
 ---
 
@@ -395,4 +399,4 @@ Mise à jour : 2026-05-30.
 
 ## 📌 Prochaine action immédiate
 
-➡ **Provisionner la base de données de dev** (voir [`database-setup.md`](./database-setup.md)) puis fournir la `DATABASE_URL` pour que je lance la première migration et démarre le **Milestone 1 (Auth)**.
+➡ **Hardening prod (Milestone 7.5)** — l'app est live, mais il manque les backups (H1, H2), le renewal Let's Encrypt (H3), et le SMTP (H4) avant de pouvoir vraiment inviter des locataires. À attaquer dans cet ordre : H1 → H2 → H3 → H4 → H5 (fix `__drizzle_migrations`).
