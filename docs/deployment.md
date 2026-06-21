@@ -65,15 +65,17 @@ Cloner le repo (ou git pull si déjà cloné) :
 git clone git@gitlab.exanders.fr:infrajo/gestion-locative-api.git .
 ```
 
-Créer le `.env` à partir de `.env.prod.example` :
+Générer le `.env` en déchiffrant les secrets SOPS :
 ```bash
-cp .env.prod.example .env
-# Éditer .env et renseigner :
-#   - DATABASE_URL (utilise gestionlocative_prod, pas dev)
-#   - COOKIE_SECRET (openssl rand -base64 48)
-#   - SMTP_PASSWORD (mot de passe noreply@zeleph.fr)
+# Prérequis (une seule fois) : sops installé + clé age privée dans
+#   ~/.config/sops/age/keys.txt (chmod 600), transmise hors-bande (jamais commitée).
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d secrets/prod.env > .env
 chmod 600 .env
 ```
+
+> Les secrets de prod vivent **chiffrés** dans le repo (`secrets/prod.env`, règle dans `.sops.yaml`).
+> Ne **jamais** éditer `.env` à la main : modifier via `sops secrets/prod.env`, committer le
+> fichier chiffré, puis re-dérouler ce déploiement (`git pull` → `sops -d` → restart).
 
 Build + start :
 ```bash

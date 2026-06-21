@@ -1,0 +1,7 @@
+# SOPS — règles de chiffrement.
+# Tout fichier secrets/*.env est chiffré avec la clé age ci-dessous (publique).
+# La clé PRIVÉE vit hors du repo : ~/.config/sops/age/keys.txt (chmod 600),
+# et en variable CI/VPS protégée pour le déploiement. Jamais committée.
+creation_rules:
+  - path_regex: secrets/.*\.env$
+    age: age1h0dnn90vwudu3php7tsc85gzs76pjdnrqgyta3eh4esqh3vgjaxqwlnsxq

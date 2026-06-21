@@ -24,3 +24,7 @@ coverage/
 
 # Données locales
 var/
+
+# SOPS — ne jamais committer un secrets DÉCHIFFRÉ (le .enc/chiffré, lui, est OK)
+secrets/*.dec.env
+secrets/*.plain.env
