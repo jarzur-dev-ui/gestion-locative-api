@@ -43,6 +43,13 @@
       "when": 1780180414987,
       "tag": "0005_fuzzy_gressill",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782076850926,
+      "tag": "0006_loose_triathlon",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import { landlordProfiles } from './schema/landlord-profiles.js';
 import { leaseGuarantors } from './schema/lease-guarantors.js';
 import { leaseTenants } from './schema/lease-tenants.js';
 import { leases } from './schema/leases.js';
+import { passwordResetTokens } from './schema/password-reset-tokens.js';
 import { properties } from './schema/properties.js';
 import { rentPeriods } from './schema/rent-periods.js';
 import { sessions } from './schema/sessions.js';
@@ -28,6 +29,7 @@ const schema = {
   leaseTenants,
   leaseGuarantors,
   invitations,
+  passwordResetTokens,
   documents,
   documentShares,
   rentPeriods,

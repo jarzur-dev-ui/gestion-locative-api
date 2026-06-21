@@ -1,13 +1,17 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { recordUserAudit } from '../../lib/audit.js';
 import type { AppEnv } from '../../types/app-env.js';
-import { authenticateByEmailAndPassword, toPublicUser } from './auth.service.js';
 import {
   ErrorResponseSchema,
+  ForgotPasswordRequestSchema,
   LoginRequestSchema,
   LoginResponseSchema,
+  ResetPasswordRequestSchema,
+  ResetPasswordResponseSchema,
   UserPublicSchema,
 } from './auth.schemas.js';
+import { authenticateByEmailAndPassword, toPublicUser } from './auth.service.js';
+import { requestPasswordReset, resetPassword } from './password-reset.service.js';
 import {
   clearSessionCookie,
   createSession,
@@ -67,6 +71,48 @@ const meRoute = createRoute({
   },
 });
 
+const forgotPasswordRoute = createRoute({
+  method: 'post',
+  path: '/forgot-password',
+  tags: [TAG],
+  summary: 'Demander un lien de réinitialisation de mot de passe',
+  request: {
+    body: {
+      content: { 'application/json': { schema: ForgotPasswordRequestSchema } },
+    },
+  },
+  responses: {
+    // Toujours 204, quelle que soit l'existence du compte : anti-énumération.
+    204: { description: 'Demande prise en compte (réponse uniforme anti-énumération)' },
+  },
+});
+
+const resetPasswordRoute = createRoute({
+  method: 'post',
+  path: '/reset-password',
+  tags: [TAG],
+  summary: "Réinitialiser le mot de passe à partir d'un token",
+  request: {
+    body: {
+      content: { 'application/json': { schema: ResetPasswordRequestSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Mot de passe réinitialisé — l'utilisateur doit se reconnecter",
+      content: { 'application/json': { schema: ResetPasswordResponseSchema } },
+    },
+    404: {
+      description: 'Lien introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    410: {
+      description: 'Lien expiré ou déjà utilisé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
 export const authRoutes = new OpenAPIHono<AppEnv>();
 
 authRoutes.openapi(loginRoute, async (c) => {
@@ -96,6 +142,25 @@ authRoutes.openapi(logoutRoute, async (c) => {
     await recordUserAudit(c, currentUser.id, { action: 'logout' });
   }
   return c.body(null, 204);
+});
+
+authRoutes.openapi(forgotPasswordRoute, async (c) => {
+  const { email } = c.req.valid('json');
+  // Anti-énumération : pas d'audit côté requête. Enregistrer `password.reset_request`
+  // ici nécessiterait de résoudre un userId, ce qui révélerait (par sa présence ou
+  // son absence) si l'email correspond à un compte. On se limite donc à l'audit
+  // `password.reset` côté /reset-password, où le userId est connu sans fuite.
+  await requestPasswordReset(email);
+  return c.body(null, 204);
+});
+
+authRoutes.openapi(resetPasswordRoute, async (c) => {
+  const { token, password } = c.req.valid('json');
+  const { userId } = await resetPassword({ token, password });
+  // On n'ouvre PAS de session : l'utilisateur doit se reconnecter avec son
+  // nouveau mot de passe (toutes ses sessions ont été révoquées par le reset).
+  await recordUserAudit(c, userId, { action: 'password.reset' });
+  return c.json({ ok: true as const }, 200);
 });
 
 authRoutes.openapi(meRoute, async (c) => {

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import postgres from 'postgres';
+import { WEB_APP_BASE_URL } from '../../config/app.js';
 import { db } from '../../db/client.js';
 import { guarantors } from '../../db/schema/guarantors.js';
 import type { Invitation } from '../../db/schema/invitations.js';
@@ -21,10 +22,6 @@ const PG_UNIQUE_VIOLATION = '23505';
 const INVITATION_TTL_DAYS = 7;
 const INVITATION_TTL_MS = INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000;
 
-// URL d'accueil de l'app web qui héberge la page d'acceptation. En V1 on hard-code
-// ; à terme on basculera vers une variable d'env (`WEB_APP_URL`).
-const WEB_APP_BASE_URL = 'https://gestion-locative.zeleph.fr';
-
 function generateInvitationToken(): string {
   // 32 bytes = 256 bits d'entropie, url-safe via base64url. Même format que les
   // tokens de session (cf. session.service.ts).
@@ -32,7 +29,9 @@ function generateInvitationToken(): string {
 }
 
 function buildMagicLink(token: string): string {
-  return `${WEB_APP_BASE_URL}/accept-invitation?token=${encodeURIComponent(token)}`;
+  // Path param (et non query string) pour correspondre à la route front réelle
+  // `/accept-invitation/:token`.
+  return `${WEB_APP_BASE_URL}/accept-invitation/${encodeURIComponent(token)}`;
 }
 
 /**

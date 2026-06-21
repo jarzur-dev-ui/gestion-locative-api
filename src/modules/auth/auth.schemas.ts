@@ -28,4 +28,25 @@ export const ErrorResponseSchema = z
   })
   .openapi('ErrorResponse');
 
+export const ForgotPasswordRequestSchema = z
+  .object({
+    email: z.string().email(),
+  })
+  .openapi('ForgotPasswordRequest');
+
+export const ResetPasswordRequestSchema = z
+  .object({
+    token: z.string().min(20),
+    password: z.string().min(8),
+  })
+  .openapi('ResetPasswordRequest');
+
+export const ResetPasswordResponseSchema = z
+  .object({
+    ok: z.literal(true),
+  })
+  .openapi('ResetPasswordResponse');
+
 export type UserPublic = z.infer<typeof UserPublicSchema>;
+export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequestSchema>;
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;

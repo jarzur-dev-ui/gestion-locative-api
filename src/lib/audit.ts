@@ -12,6 +12,8 @@ import { logger } from './logger.js';
 export type AuditAction =
   | 'login'
   | 'logout'
+  | 'password.reset_request'
+  | 'password.reset'
   | 'lease.create'
   | 'lease.update'
   | 'lease.status_change'

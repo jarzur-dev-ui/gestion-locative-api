@@ -99,6 +99,37 @@ export function renderInvitationEmail(opts: {
   return { subject, html, text };
 }
 
+export function renderPasswordResetEmail(opts: {
+  recipientName?: string;
+  resetLink: string;
+}): { subject: string; html: string; text: string } {
+  const subject = 'Réinitialisation de votre mot de passe Zeleph';
+  const greeting = opts.recipientName ? `Bonjour ${escapeHtml(opts.recipientName)},` : 'Bonjour,';
+  const greetingText = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
+
+  const html = shell(`
+    <h1 style="font-size:20px;margin:0 0 16px;">${greeting}</h1>
+    <p style="line-height:1.5;margin:0 0 16px;">
+      Vous avez demandé la réinitialisation de votre mot de passe Zeleph. Cliquez sur le bouton ci-dessous pour en définir un nouveau :
+    </p>
+    ${button('Réinitialiser mon mot de passe', opts.resetLink)}
+    <p style="line-height:1.5;margin:0 0 8px;font-size:13px;color:#6b7280;">
+      Ce lien est valable 1 heure. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email — votre mot de passe restera inchangé.
+    </p>
+  `);
+
+  const text = [
+    greetingText,
+    '',
+    'Vous avez demandé la réinitialisation de votre mot de passe Zeleph. Cliquez sur le lien ci-dessous pour en définir un nouveau :',
+    opts.resetLink,
+    '',
+    "Ce lien est valable 1 heure. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email — votre mot de passe restera inchangé.",
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
 export function renderRentNoticeEmail(opts: {
   recipientName: string;
   landlordName: string;
