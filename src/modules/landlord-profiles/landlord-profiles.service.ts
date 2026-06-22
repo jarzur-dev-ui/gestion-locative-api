@@ -1,11 +1,14 @@
-import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { type SQL, and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { documents } from '../../db/schema/documents.js';
 import type { LandlordProfile } from '../../db/schema/landlord-profiles.js';
 import { landlordProfiles } from '../../db/schema/landlord-profiles.js';
 import { leases } from '../../db/schema/leases.js';
 import { properties } from '../../db/schema/properties.js';
-import type { LandlordProfilePublic, UpsertLandlordProfileInput } from './landlord-profiles.schemas.js';
+import type {
+  LandlordProfilePublic,
+  UpsertLandlordProfileInput,
+} from './landlord-profiles.schemas.js';
 
 // Quota de stockage par défaut quand le bailleur n'a pas (encore) de profil
 // en base. Aligné sur la valeur de la colonne `storage_quota_bytes` (1 GiB).

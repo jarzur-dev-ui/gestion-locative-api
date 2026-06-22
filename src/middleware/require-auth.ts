@@ -10,7 +10,9 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-export function requireRole(...allowed: Array<'landlord' | 'tenant' | 'guarantor'>): MiddlewareHandler<AppEnv> {
+export function requireRole(
+  ...allowed: Array<'landlord' | 'tenant' | 'guarantor'>
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const user = c.get('user');
     if (!user) {

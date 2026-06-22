@@ -72,7 +72,9 @@ export function startScheduler(): void {
   );
   scheduledTasks.push(orphanCleanupTask);
 
-  logger.info('scheduler: démarré (3 tâches : rent-periods 08:00, purge 03:00, orphan-cleanup 04:00)');
+  logger.info(
+    'scheduler: démarré (3 tâches : rent-periods 08:00, purge 03:00, orphan-cleanup 04:00)',
+  );
 }
 
 export async function stopScheduler(): Promise<void> {

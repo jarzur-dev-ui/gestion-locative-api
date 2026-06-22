@@ -1,5 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { date, index, integer, jsonb, pgEnum, pgTable, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  date,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { documents } from './documents.js';
 import { leases } from './leases.js';
 import { users } from './users.js';

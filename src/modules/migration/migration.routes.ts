@@ -14,13 +14,13 @@ const importRoute = createRoute({
   method: 'post',
   path: '/import',
   tags: [TAG],
-  summary: 'Import one-shot d\'un export legacy localStorage (bailleur + baux)',
+  summary: "Import one-shot d'un export legacy localStorage (bailleur + baux)",
   request: {
     body: { content: { 'application/json': { schema: ImportRequestSchema } } },
   },
   responses: {
     200: {
-      description: 'Rapport d\'import (counts + warnings)',
+      description: "Rapport d'import (counts + warnings)",
       content: { 'application/json': { schema: ImportReportSchema } },
     },
     401: { description: 'Non authentifié' },

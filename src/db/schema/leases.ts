@@ -1,4 +1,13 @@
-import { boolean, date, index, integer, pgEnum, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { properties } from './properties.js';
 
 export const leaseTypeEnum = pgEnum('lease_type', ['empty', 'furnished']);

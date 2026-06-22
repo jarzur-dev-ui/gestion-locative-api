@@ -21,11 +21,7 @@ export async function listByCreator(
       )
     : eq(guarantors.createdByUserId, creatorUserId);
 
-  return db
-    .select()
-    .from(guarantors)
-    .where(where)
-    .orderBy(desc(guarantors.createdAt));
+  return db.select().from(guarantors).where(where).orderBy(desc(guarantors.createdAt));
 }
 
 export async function create(
@@ -81,10 +77,7 @@ export async function create(
   return row;
 }
 
-export async function getByIdForCreator(
-  id: string,
-  creatorUserId: string,
-): Promise<Guarantor> {
+export async function getByIdForCreator(id: string, creatorUserId: string): Promise<Guarantor> {
   const [row] = await db.select().from(guarantors).where(eq(guarantors.id, id)).limit(1);
 
   if (!row) {
@@ -127,10 +120,7 @@ export async function patch(
   // Le type est IMMUTABLE via cet endpoint : un switch person↔organization
   // doit passer par delete + recreate (plus simple, évite des ambiguïtés sur
   // les champs orphelins).
-  if (
-    data.guarantorTypeKey !== undefined &&
-    data.guarantorTypeKey !== existing.guarantorTypeKey
-  ) {
+  if (data.guarantorTypeKey !== undefined && data.guarantorTypeKey !== existing.guarantorTypeKey) {
     throw new HTTPException(400, {
       message:
         'Le type d’un garant est immuable. Pour changer de type, supprimez puis recréez le garant.',

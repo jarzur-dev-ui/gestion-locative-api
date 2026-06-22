@@ -57,7 +57,7 @@ const acceptInvitationRoute = createRoute({
   method: 'post',
   path: '/accept',
   tags: [TAG],
-  summary: "Accepter une invitation : crée le compte et ouvre la session",
+  summary: 'Accepter une invitation : crée le compte et ouvre la session',
   request: {
     body: {
       content: { 'application/json': { schema: AcceptInvitationSchema } },

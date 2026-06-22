@@ -3,6 +3,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { cors } from 'hono/cors';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
+import { globalRateLimiter, sensitiveRateLimiter } from './lib/rate-limit.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { sessionMiddleware } from './middleware/session.js';
 import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes.js';
@@ -26,6 +27,22 @@ import type { AppEnv } from './types/app-env.js';
 const app = new OpenAPIHono<AppEnv>();
 
 app.use('*', cors({ origin: env.CORS_ORIGIN, credentials: true }));
+
+// Rate limiting — voir src/lib/rate-limit.ts pour le détail des limites et la
+// résolution de l'IP cliente (entrée X-Forwarded-For ajoutée par le proxy de
+// confiance, jamais l'entrée gauche spoofable).
+// Limiteur global : 100 req/min/IP, garde-fou large contre l'abus généralisé.
+app.use('*', globalRateLimiter);
+// Buckets stricts (10 req/min/IP) sur les routes non authentifiées sensibles :
+// brute-force de credentials (login), énumération/abus de tokens (reset,
+// invitation) et scraping de partages publics. Enregistrés AVANT `.route()`
+// pour s'appliquer en amont des handlers métier.
+app.use('/api/auth/login', sensitiveRateLimiter);
+app.use('/api/auth/forgot-password', sensitiveRateLimiter);
+app.use('/api/auth/reset-password', sensitiveRateLimiter);
+app.use('/api/invitations/accept', sensitiveRateLimiter);
+app.use('/share/*', sensitiveRateLimiter);
+
 app.use('*', sessionMiddleware);
 app.onError(errorHandler);
 

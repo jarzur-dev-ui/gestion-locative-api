@@ -240,8 +240,6 @@ export async function acceptInvitation(opts: {
   token: string;
   password: string;
 }): Promise<AcceptInvitationResult> {
-  const passwordHash = await hashPassword(opts.password);
-
   return db.transaction(async (tx) => {
     const [invitation] = await tx
       .select()
@@ -280,6 +278,12 @@ export async function acceptInvitation(opts: {
     if (consumedInvitation.length === 0) {
       throw new HTTPException(410, { message: 'Invitation déjà utilisée ou expirée' });
     }
+
+    // Anti DoS (hash-amplification) : le hash Argon2 est coûteux (CPU + RAM).
+    // On ne le calcule qu'APRÈS avoir validé ET consommé le token (CAS
+    // `usedAt IS NULL` réussi) — un attaquant qui spamme l'endpoint avec un
+    // token invalide est rejeté avant tout travail cryptographique.
+    const passwordHash = await hashPassword(opts.password);
 
     // Vérifie l'unicité de l'email AVANT l'insert pour rendre un 409 lisible
     // (l'index unique users.email lèverait sinon une erreur DB générique).

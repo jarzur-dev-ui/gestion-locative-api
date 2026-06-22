@@ -37,8 +37,32 @@ const schema = {
   auditLogs,
 };
 
+/**
+ * Détermine s'il faut chiffrer la connexion DB (TLS). On active SSL dès que
+ * l'hôte n'est PAS local (loopback / host.docker.internal) : une connexion qui
+ * sort de la machine doit être chiffrée. Pour un Postgres local (dev, ou DB
+ * co-localisée derrière `host.docker.internal` sur le même VPS) on reste en
+ * clair — le trafic ne quitte pas l'hôte et le cert TLS serait superflu.
+ */
+function shouldUseSsl(databaseUrl: string): boolean {
+  let host: string;
+  try {
+    host = new URL(databaseUrl).hostname;
+  } catch {
+    // URL non parsable : on ne force pas SSL (l'app crashera de toute façon
+    // au premier query si l'URL est invalide).
+    return false;
+  }
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+  return !localHosts.has(host);
+}
+
 const queryClient = postgres(env.DATABASE_URL, {
   max: env.NODE_ENV === 'production' ? 20 : 5,
+  // `ssl: 'require'` → sémantique `sslmode=require` (chiffre sans vérifier la
+  // CA). Suffisant pour empêcher l'écoute passive sur un réseau public ; pour
+  // une vérification stricte de cert il faudrait passer un objet `{ ca, … }`.
+  ssl: shouldUseSsl(env.DATABASE_URL) ? 'require' : false,
 });
 
 export const db = drizzle(queryClient, { schema, logger: env.NODE_ENV !== 'production' });

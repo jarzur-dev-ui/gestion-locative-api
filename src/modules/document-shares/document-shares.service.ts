@@ -9,10 +9,7 @@ import { documents } from '../../db/schema/documents.js';
 import { leases } from '../../db/schema/leases.js';
 import { properties } from '../../db/schema/properties.js';
 import { logger } from '../../lib/logger.js';
-import {
-  SHARE_DEFAULT_TTL_DAYS,
-  SHARE_MAX_TTL_DAYS,
-} from './document-shares.schemas.js';
+import { SHARE_DEFAULT_TTL_DAYS, SHARE_MAX_TTL_DAYS } from './document-shares.schemas.js';
 
 // URL d'accueil de la page publique de téléchargement. En V1 on hard-code
 // ; à terme on basculera vers une variable d'env (`WEB_APP_URL` ou
@@ -58,10 +55,7 @@ export function maskToken(token: string): string {
  *
  * Retourne le document si l'accès est OK, sinon lève 403/404.
  */
-async function assertLandlordOwnsDocument(
-  documentId: string,
-  userId: string,
-): Promise<Document> {
+async function assertLandlordOwnsDocument(documentId: string, userId: string): Promise<Document> {
   // On joint le document à `properties` par les deux chemins possibles
   // (direct via documents.property_id OU indirect via documents.lease_id →
   // leases.property_id) et on récupère l'owner de chaque côté.
@@ -118,10 +112,7 @@ export async function createShare(opts: {
 
   // Borne de sécurité côté service (en plus de la validation Zod). Évite
   // qu'un caller bypass-validation crée un partage quasi-permanent.
-  const ttlDays = Math.min(
-    Math.max(opts.ttlDays ?? SHARE_DEFAULT_TTL_DAYS, 1),
-    SHARE_MAX_TTL_DAYS,
-  );
+  const ttlDays = Math.min(Math.max(opts.ttlDays ?? SHARE_DEFAULT_TTL_DAYS, 1), SHARE_MAX_TTL_DAYS);
 
   const token = generateShareToken();
   const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
@@ -206,11 +197,15 @@ export async function listSharesByCreator(
 export async function resolveShareForDownload(
   token: string,
 ): Promise<{ share: DocumentShare; document: Document } | null> {
+  // On exclut les documents soft-deleted (`deletedAt IS NOT NULL`) du join :
+  // un document supprimé ne doit plus être téléchargeable via un lien public,
+  // même si le partage est encore valide (non révoqué / non expiré). Le row
+  // disparaît alors et l'appelant renvoie 410 (cf. share-public.routes.ts).
   const [row] = await db
     .select({ share: documentShares, document: documents })
     .from(documentShares)
     .innerJoin(documents, eq(documents.id, documentShares.documentId))
-    .where(eq(documentShares.token, token))
+    .where(and(eq(documentShares.token, token), isNull(documents.deletedAt)))
     .limit(1);
 
   if (!row) return null;

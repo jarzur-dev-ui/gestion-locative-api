@@ -12,10 +12,10 @@ const myLeasesRoute = createRoute({
   method: 'get',
   path: '/leases',
   tags: [TAG],
-  summary: 'Liste des baux où l\'utilisateur courant est partie (locataire ou garant)',
+  summary: "Liste des baux où l'utilisateur courant est partie (locataire ou garant)",
   responses: {
     200: {
-      description: 'Baux accessibles à l\'utilisateur courant',
+      description: "Baux accessibles à l'utilisateur courant",
       content: { 'application/json': { schema: LeaseListSchema } },
     },
     401: { description: 'Non authentifié' },

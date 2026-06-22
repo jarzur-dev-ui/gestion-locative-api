@@ -1,20 +1,22 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
+import { type SQL, and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import type { Document } from '../../db/schema/documents.js';
 import { documents } from '../../db/schema/documents.js';
+import { guarantors } from '../../db/schema/guarantors.js';
 import { leaseGuarantors } from '../../db/schema/lease-guarantors.js';
 import { leaseTenants } from '../../db/schema/lease-tenants.js';
 import { leases } from '../../db/schema/leases.js';
 import { properties } from '../../db/schema/properties.js';
 import { tenants } from '../../db/schema/tenants.js';
-import { guarantors } from '../../db/schema/guarantors.js';
 import type { User } from '../../db/schema/users.js';
 import {
-  deleteFile,
   FileTooLargeError,
-  storeFile,
+  MimeMismatchError,
   UnsupportedMimeTypeError,
+  assertContentMatchesDeclaredMime,
+  deleteFile,
+  storeFile,
 } from '../../lib/storage.js';
 import {
   getStorageQuotaBytes,
@@ -441,6 +443,21 @@ export async function uploadDocument(user: User, input: UploadInput): Promise<Do
   const arrayBuffer = await input.file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const incomingSize = buffer.byteLength;
+
+  // Validation par magic bytes : on refuse un fichier dont le contenu réel ne
+  // correspond pas au type MIME déclaré (multipart), ou hors allowlist. Évite
+  // qu'un payload malveillant (HTML/SVG/exécutable) soit stocké et servi sous
+  // un type d'image "sûr". On le fait AVANT le calcul de quota et le stockage.
+  try {
+    await assertContentMatchesDeclaredMime(buffer, input.file.type);
+  } catch (err) {
+    if (err instanceof MimeMismatchError) {
+      throw new HTTPException(400, {
+        message: 'Le contenu du fichier ne correspond pas au type déclaré',
+      });
+    }
+    throw err;
+  }
 
   // Quota landlord : on rattache la consommation au bailleur propriétaire
   // de la ressource (lease/property). Pour les uploads tenant/garant on

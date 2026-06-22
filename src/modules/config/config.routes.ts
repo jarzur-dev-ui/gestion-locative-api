@@ -17,7 +17,7 @@ const listRoute = createRoute({
   method: 'get',
   path: '/',
   tags: [TAG],
-  summary: 'Récupérer toute la configuration applicative (defaults, listes d\'options i18n…)',
+  summary: "Récupérer toute la configuration applicative (defaults, listes d'options i18n…)",
   responses: {
     200: {
       description: 'Map clé/valeur de toute la config (wrapped sous "config")',

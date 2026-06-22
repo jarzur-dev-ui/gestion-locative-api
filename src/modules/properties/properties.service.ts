@@ -53,11 +53,7 @@ export async function listByOwner(userId: string): Promise<Property[]> {
 }
 
 export async function getByIdForOwner(id: string, userId: string): Promise<Property> {
-  const [row] = await db
-    .select()
-    .from(properties)
-    .where(eq(properties.id, id))
-    .limit(1);
+  const [row] = await db.select().from(properties).where(eq(properties.id, id)).limit(1);
 
   if (!row) {
     throw new HTTPException(404, { message: 'Bien immobilier non trouvé' });

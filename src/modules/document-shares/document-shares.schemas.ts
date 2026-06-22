@@ -55,10 +55,13 @@ export const ShareListSchema = z.array(ShareSchema).openapi('DocumentShareList')
 
 export const ShareTokenParamSchema = z
   .object({
-    token: z.string().min(20).openapi({
-      param: { name: 'token', in: 'path' },
-      example: 'aXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxX',
-    }),
+    token: z
+      .string()
+      .min(20)
+      .openapi({
+        param: { name: 'token', in: 'path' },
+        example: 'aXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXxX',
+      }),
   })
   .openapi('DocumentShareTokenParam');
 

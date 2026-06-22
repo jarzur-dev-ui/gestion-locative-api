@@ -67,7 +67,10 @@ export const PropertyIdParamSchema = z.object({
   id: z
     .string()
     .uuid()
-    .openapi({ param: { name: 'id', in: 'path' }, example: '00000000-0000-0000-0000-000000000000' }),
+    .openapi({
+      param: { name: 'id', in: 'path' },
+      example: '00000000-0000-0000-0000-000000000000',
+    }),
 });
 
 export type PropertyPublic = z.infer<typeof PropertySchema>;

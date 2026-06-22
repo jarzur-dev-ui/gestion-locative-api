@@ -148,10 +148,13 @@ export const UpdateLeaseStatusSchema = z
 
 export const LeaseIdParamSchema = z
   .object({
-    id: z.string().uuid().openapi({
-      param: { name: 'id', in: 'path' },
-      example: '00000000-0000-0000-0000-000000000000',
-    }),
+    id: z
+      .string()
+      .uuid()
+      .openapi({
+        param: { name: 'id', in: 'path' },
+        example: '00000000-0000-0000-0000-000000000000',
+      }),
   })
   .openapi('LeaseIdParam');
 

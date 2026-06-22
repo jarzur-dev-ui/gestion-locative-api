@@ -29,7 +29,7 @@ function splitCpVille(input: string | undefined): { postalCode: string; city: st
   if (!input) return { postalCode: '', city: '' };
   const trimmed = input.trim();
   const match = trimmed.match(/^(\d{5})\s+(.+)$/);
-  if (match && match[1] && match[2]) return { postalCode: match[1], city: match[2].trim() };
+  if (match?.[1] && match[2]) return { postalCode: match[1], city: match[2].trim() };
   return { postalCode: '', city: trimmed };
 }
 
@@ -194,7 +194,9 @@ async function importOneBail(
     report.warnings.push(`Bail "${bail.id}" : locataire sans nom, bail ignoré.`);
     return;
   }
-  const tenantEmail = bail.locataireEmail ?? `${(firstName + '.' + lastName).toLowerCase().replace(/\s+/g, '')}@import.local`;
+  const tenantEmail =
+    bail.locataireEmail ??
+    `${`${firstName}.${lastName}`.toLowerCase().replace(/\s+/g, '')}@import.local`;
 
   // Idempotence par email (par créateur)
   const existingTenant = await db
@@ -230,12 +232,15 @@ async function importOneBail(
   let guarantorId: string | null = null;
   if (bail.garant && bail.garant.trim() !== '') {
     const { firstName: gFirst, lastName: gLast } = splitName(bail.garant);
-    const guarantorMarkerEmail = `garant-${(gFirst + '.' + gLast).toLowerCase().replace(/\s+/g, '')}@import.local`;
+    const guarantorMarkerEmail = `garant-${`${gFirst}.${gLast}`.toLowerCase().replace(/\s+/g, '')}@import.local`;
     const existingG = await db
       .select()
       .from(guarantors)
       .where(
-        and(eq(guarantors.createdByUserId, landlordUserId), eq(guarantors.email, guarantorMarkerEmail)),
+        and(
+          eq(guarantors.createdByUserId, landlordUserId),
+          eq(guarantors.email, guarantorMarkerEmail),
+        ),
       )
       .limit(1);
     if (existingG.length > 0 && existingG[0]) {

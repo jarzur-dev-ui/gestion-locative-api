@@ -146,10 +146,7 @@ async function assertTenantsOwnedByUser(tenantIds: string[], userId: string): Pr
   }
 }
 
-async function assertGuarantorsOwnedByUser(
-  guarantorIds: string[],
-  userId: string,
-): Promise<void> {
+async function assertGuarantorsOwnedByUser(guarantorIds: string[], userId: string): Promise<void> {
   if (guarantorIds.length === 0) return;
 
   const uniqueIds = Array.from(new Set(guarantorIds));
@@ -193,10 +190,7 @@ async function loadGuarantorSummaries(leaseId: string): Promise<GuarantorSummary
     .where(eq(leaseGuarantors.leaseId, leaseId));
 }
 
-export async function listByOwner(
-  userId: string,
-  status?: LeaseStatusKey,
-): Promise<LeasePublic[]> {
+export async function listByOwner(userId: string, status?: LeaseStatusKey): Promise<LeasePublic[]> {
   const where = status
     ? and(eq(properties.ownerUserId, userId), eq(leases.statusKey, status))
     : eq(properties.ownerUserId, userId);
@@ -391,7 +385,7 @@ export async function patch(
   }
 
   const updated = await db.transaction(async (tx) => {
-    let row;
+    let row: Lease;
     if (hasScalarChanges) {
       const [updatedRow] = await tx
         .update(leases)

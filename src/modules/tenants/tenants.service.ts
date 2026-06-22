@@ -13,10 +13,7 @@ export async function listByCreator(creatorUserId: string): Promise<Tenant[]> {
     .orderBy(desc(tenants.createdAt));
 }
 
-export async function create(
-  creatorUserId: string,
-  data: CreateTenantInput,
-): Promise<Tenant> {
+export async function create(creatorUserId: string, data: CreateTenantInput): Promise<Tenant> {
   const now = new Date();
   const [tenant] = await db
     .insert(tenants)
@@ -43,10 +40,7 @@ export async function create(
   return tenant;
 }
 
-export async function getByIdForCreator(
-  id: string,
-  creatorUserId: string,
-): Promise<Tenant> {
+export async function getByIdForCreator(id: string, creatorUserId: string): Promise<Tenant> {
   const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
 
   if (!tenant) {
@@ -77,9 +71,7 @@ export async function patch(
   // On filtre les clés `undefined` (= absentes du payload) ; `null` est conservé
   // pour effacer explicitement la valeur (colonnes nullables uniquement, garanti
   // par le schéma Zod côté entrée).
-  const updateData = Object.fromEntries(
-    Object.entries(data).filter(([, v]) => v !== undefined),
-  );
+  const updateData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
 
   if (Object.keys(updateData).length === 0) {
     // PATCH vide → on renvoie l'entité telle quelle, sans toucher updatedAt.

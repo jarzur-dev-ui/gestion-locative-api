@@ -3,8 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import type { User } from '../../db/schema/users.js';
 import { users } from '../../db/schema/users.js';
-import { verifyPassword } from './password.js';
 import type { UserPublic } from './auth.schemas.js';
+import { verifyPassword } from './password.js';
 
 export async function authenticateByEmailAndPassword(
   email: string,

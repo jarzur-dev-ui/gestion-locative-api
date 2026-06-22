@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileTypeFromBuffer } from 'file-type';
 import { env } from '../config/env.js';
 import { logger } from './logger.js';
 
@@ -18,9 +19,9 @@ export const ALLOWED_MIME_TYPES = new Set<string>([
   'image/webp',
 ]);
 
-// NOTE (V1): the mime type is trusted from the caller (multipart claim).
-// We do not sniff content magic bytes here — that would require a dep like
-// `file-type`. Hardening flagged for M2.5.
+// The declared mime type (multipart claim) is no longer trusted blindly:
+// `assertContentMatchesDeclaredMime` sniffs the real type from the buffer's
+// magic bytes (see below). Both checks (declared + sniffed) are enforced.
 const MIME_TO_EXT: Record<string, string> = {
   'application/pdf': 'pdf',
   'image/jpeg': 'jpg',
@@ -43,6 +44,20 @@ export class UnsupportedMimeTypeError extends StorageError {
   constructor(mimeType: string) {
     super(`Unsupported mime type: ${mimeType}`);
     this.name = 'UnsupportedMimeTypeError';
+  }
+}
+
+/**
+ * Levée quand le contenu réel du fichier (déduit des magic bytes) ne
+ * correspond pas au type MIME déclaré, ou n'est pas dans l'allowlist. Protège
+ * contre l'upload d'un exécutable/HTML déguisé en `image/png`.
+ */
+export class MimeMismatchError extends StorageError {
+  constructor(declared: string, detected: string | null) {
+    super(
+      `Content does not match declared mime type: declared=${declared}, detected=${detected ?? 'unknown'}`,
+    );
+    this.name = 'MimeMismatchError';
   }
 }
 
@@ -117,6 +132,35 @@ function isNodeErrnoException(err: unknown): err is NodeJS.ErrnoException {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Vérifie que le contenu réel du buffer (magic bytes) correspond au type MIME
+ * déclaré par le caller ET appartient à l'allowlist. Défense contre l'upload
+ * de contenu malveillant déguisé (ex: HTML/SVG/exécutable annoncé `image/png`).
+ *
+ * Politique :
+ *  - On exige que `file-type` reconnaisse le contenu ET que le type détecté
+ *    soit dans `ALLOWED_MIME_TYPES`.
+ *  - On exige que le type détecté == type déclaré (sinon `MimeMismatchError`).
+ *
+ * Note : `file-type` ne reconnaît pas les fichiers texte purs ; nos types
+ * autorisés (pdf/jpeg/png/webp) ont tous une signature binaire détectable, donc
+ * un `undefined` retourné = contenu non conforme → rejet.
+ */
+export async function assertContentMatchesDeclaredMime(
+  data: Buffer | Uint8Array,
+  declaredMimeType: string,
+): Promise<void> {
+  const detected = await fileTypeFromBuffer(data);
+  const detectedMime = detected?.mime ?? null;
+
+  if (!detectedMime || !ALLOWED_MIME_TYPES.has(detectedMime)) {
+    throw new MimeMismatchError(declaredMimeType, detectedMime);
+  }
+  if (detectedMime !== declaredMimeType) {
+    throw new MimeMismatchError(declaredMimeType, detectedMime);
+  }
+}
 
 /**
  * Persist a file to the volume. Validates mime type and size.

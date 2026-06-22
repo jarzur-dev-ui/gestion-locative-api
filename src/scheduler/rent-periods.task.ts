@@ -35,10 +35,7 @@ async function createUpcomingPeriods(): Promise<number> {
   const nextMonth = getNextPeriodMonth();
   const nextMonthFirstDay = periodMonthToFirstDay(nextMonth);
 
-  const activeLeases = await db
-    .select()
-    .from(leases)
-    .where(eq(leases.statusKey, 'active'));
+  const activeLeases = await db.select().from(leases).where(eq(leases.statusKey, 'active'));
 
   let created = 0;
   for (const lease of activeLeases) {

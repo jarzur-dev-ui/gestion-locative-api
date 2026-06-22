@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, type SQL } from 'drizzle-orm';
+import { type SQL, and, desc, eq, lt } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import type { AuditLog } from '../../db/schema/audit-logs.js';
 import { auditLogs } from '../../db/schema/audit-logs.js';
@@ -34,9 +34,7 @@ export type ListAuditLogsForUserOpts = {
  *   coûteux et nécessite probablement une vue matérialisée ou un index
  *   spécifique. Hors-scope V1 par souci de simplicité.
  */
-export async function listAuditLogsForUser(
-  opts: ListAuditLogsForUserOpts,
-): Promise<AuditLog[]> {
+export async function listAuditLogsForUser(opts: ListAuditLogsForUserOpts): Promise<AuditLog[]> {
   const limit = Math.min(Math.max(opts.limit, 1), AUDIT_LOG_MAX_LIMIT);
 
   const conditions: SQL[] = [eq(auditLogs.actorUserId, opts.userId)];
@@ -59,12 +57,7 @@ export async function listAuditLogsForUser(
   // cas "where vide".
   const where = and(...conditions);
 
-  return db
-    .select()
-    .from(auditLogs)
-    .where(where)
-    .orderBy(desc(auditLogs.createdAt))
-    .limit(limit);
+  return db.select().from(auditLogs).where(where).orderBy(desc(auditLogs.createdAt)).limit(limit);
 }
 
 /**

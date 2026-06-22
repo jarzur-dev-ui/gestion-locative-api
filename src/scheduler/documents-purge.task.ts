@@ -1,8 +1,8 @@
 import { and, eq, isNotNull, lt } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { documents } from '../db/schema/documents.js';
-import { deleteFile, getFileStat } from '../lib/storage.js';
 import { logger } from '../lib/logger.js';
+import { deleteFile, getFileStat } from '../lib/storage.js';
 import { getByKey } from '../modules/config/config.service.js';
 
 /**
@@ -76,10 +76,7 @@ export async function runDocumentsPurgeTask(): Promise<DocumentsPurgeResult> {
     .limit(PURGE_BATCH_LIMIT);
 
   if (candidates.length === 0) {
-    logger.debug(
-      { ttlDays, cutoff: cutoff.toISOString() },
-      'documents-purge: rien à purger',
-    );
+    logger.debug({ ttlDays, cutoff: cutoff.toISOString() }, 'documents-purge: rien à purger');
     return { purged: 0, orphanFiles: 0 };
   }
 
@@ -108,7 +105,7 @@ export async function runDocumentsPurgeTask(): Promise<DocumentsPurgeResult> {
     } catch (err) {
       logger.error(
         { err, documentId: doc.id, filePath: doc.filePath },
-        'documents-purge: échec de la purge d\'un document — sera retenté',
+        "documents-purge: échec de la purge d'un document — sera retenté",
       );
     }
   }

@@ -3,6 +3,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { stream as honoStream } from 'hono/streaming';
 import { recordUserAudit } from '../../lib/audit.js';
+import { FileNotFoundError, readFileStream } from '../../lib/storage.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
@@ -26,7 +27,6 @@ import {
   updateStatus,
   uploadDocument,
 } from './documents.service.js';
-import { readFileStream, FileNotFoundError } from '../../lib/storage.js';
 
 const TAG = 'documents';
 
@@ -444,6 +444,9 @@ documentsRoutes.openapi(downloadRoute, async (c) => {
     // On évite que des proxys mettent en cache un binaire potentiellement
     // sensible (ex: pièce d'identité). Cache léger côté client uniquement.
     'Cache-Control': 'private, no-store',
+    // Empêche le MIME-sniffing du navigateur : le contenu est servi avec le
+    // type déclaré uniquement (anti XSS sur un fichier malveillant rendu inline).
+    'X-Content-Type-Options': 'nosniff',
   });
 });
 

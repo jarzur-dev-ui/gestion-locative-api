@@ -9,22 +9,22 @@ import { properties } from '../../db/schema/properties.js';
 import type { Adjustment, RentPeriod } from '../../db/schema/rent-periods.js';
 import { rentPeriods } from '../../db/schema/rent-periods.js';
 import { tenants } from '../../db/schema/tenants.js';
-import { logger } from '../../lib/logger.js';
-import { sendEmail } from '../../lib/mailer.js';
 import {
   renderCancellationEmail,
   renderRentNoticeEmail,
   renderRentReceiptEmail,
 } from '../../lib/email-templates.js';
+import { logger } from '../../lib/logger.js';
+import { sendEmail } from '../../lib/mailer.js';
 import {
-  formatDate,
-  formatEur,
-  formatMonth,
   type LandlordInfo,
   type PropertyInfo,
   type RentNoticeData,
   type RentReceiptData,
   type TenantInfo,
+  formatDate,
+  formatEur,
+  formatMonth,
   renderRentNoticePdf,
   renderRentReceiptPdf,
 } from '../../lib/pdf-renderer.js';
@@ -55,10 +55,7 @@ type TenantSummary = {
  * Construit la représentation publique d'une période de loyer. On convertit
  * la `date` 'YYYY-MM-DD' en 'YYYY-MM' côté API (l'UI raisonne en mois).
  */
-export function toPublicRentPeriod(
-  p: RentPeriod,
-  tenantsList: TenantSummary[],
-): RentPeriodPublic {
+export function toPublicRentPeriod(p: RentPeriod, tenantsList: TenantSummary[]): RentPeriodPublic {
   return {
     id: p.id,
     leaseId: p.leaseId,
@@ -106,6 +103,21 @@ async function getRentPeriodForOwner(id: string, userId: string): Promise<RentPe
     throw new HTTPException(403, { message: 'Accès refusé' });
   }
   return row.rp;
+}
+
+/**
+ * Garde-fou métier : on ne génère ni avis ni quittance pour une période dont
+ * le total dû est négatif (ex: gros avoir/crédit dépassant le loyer). Le
+ * renderer PDF rejette `totalDueCents < 0` avec une Error générique (→ 500) ;
+ * on intercepte ici en amont pour rendre un 409 explicite et actionnable.
+ */
+function assertNonNegativeTotal(totalDueCents: number): void {
+  if (totalDueCents < 0) {
+    throw new HTTPException(409, {
+      message:
+        'Le montant total dû est négatif (crédit supérieur au loyer) — ajustez la période avant d’émettre un avis ou une quittance',
+    });
+  }
 }
 
 async function loadTenantSummaries(leaseId: string): Promise<TenantSummary[]> {
@@ -400,6 +412,8 @@ export async function sendNotice(id: string, userId: string): Promise<RentPeriod
     });
   }
 
+  assertNonNegativeTotal(period.totalDueCents);
+
   const ctx = await loadLeaseContextForPdf(period.leaseId);
   const periodMonthStr = firstDayToPeriodMonth(period.periodMonth);
 
@@ -511,9 +525,7 @@ export async function sendNotice(id: string, userId: string): Promise<RentPeriod
           subject,
           html,
           text,
-          attachments: [
-            { filename, content: pdfBuffer, contentType: 'application/pdf' },
-          ],
+          attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
         });
         if (!result.delivered) {
           logger.warn(
@@ -553,6 +565,8 @@ export async function markPaid(id: string, userId: string): Promise<RentPeriodPu
       message: `Transition invalide depuis l’état "${period.statusKey}"`,
     });
   }
+
+  assertNonNegativeTotal(period.totalDueCents);
 
   const ctx = await loadLeaseContextForPdf(period.leaseId);
   const periodMonthStr = firstDayToPeriodMonth(period.periodMonth);
@@ -672,9 +686,7 @@ export async function markPaid(id: string, userId: string): Promise<RentPeriodPu
           subject,
           html,
           text,
-          attachments: [
-            { filename, content: pdfBuffer, contentType: 'application/pdf' },
-          ],
+          attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
         });
         if (!result.delivered) {
           logger.warn(
@@ -809,4 +821,3 @@ export async function markUnpaid(id: string, userId: string): Promise<RentPeriod
   const tenantsList = await loadTenantSummaries(updatedPeriod.leaseId);
   return toPublicRentPeriod(updatedPeriod, tenantsList);
 }
-

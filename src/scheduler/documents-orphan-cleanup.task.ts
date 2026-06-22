@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../config/env.js';
@@ -68,7 +69,7 @@ async function walkRegularFiles(
   out: string[],
   onError: (err: unknown, context: string) => void,
 ): Promise<void> {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch (err) {

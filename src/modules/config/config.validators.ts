@@ -43,24 +43,46 @@ export const CONFIG_VALUE_SCHEMAS: Record<string, z.ZodTypeAny> = {
 };
 
 /**
+ * Borne dure sur la taille de la valeur sérialisée (JSON). Empêche qu'un PUT
+ * stocke un blob arbitrairement gros en base via l'endpoint config (DoS
+ * stockage / mémoire). 64 Kio couvre très largement nos listes d'options.
+ */
+const MAX_CONFIG_VALUE_BYTES = 64 * 1024;
+
+/**
  * Validates a config value against its key-specific schema.
  *
- * V1 policy: unknown keys (not present in `CONFIG_VALUE_SCHEMAS`) PASS through
- * without validation. This keeps the endpoint forward-compatible with new keys
- * introduced by future code before this validator is updated.
- * For V2 we may decide to refuse unknown keys.
+ * Sécurité (mono-bailleur, scoping multi-tenant hors périmètre) : on REFUSE les
+ * clés inconnues. La config n'est PAS un key/value store libre — n'accepter que
+ * les clés déclarées dans `CONFIG_VALUE_SCHEMAS` (alignées sur `config.defaults`)
+ * évite qu'un bailleur (ou un token compromis) injecte des entrées arbitraires
+ * lues plus tard par le front. On plafonne aussi la taille de la valeur.
  */
 export function validateConfigValue(
   key: string,
   value: unknown,
-):
-  | { ok: true; value: unknown }
-  | { ok: false; error: string; issues: unknown } {
+): { ok: true; value: unknown } | { ok: false; error: string; issues: unknown } {
   const schema = CONFIG_VALUE_SCHEMAS[key];
   if (!schema) {
-    // Unknown key — pour V1 on accepte (forward-compat), pour V2 on pourrait refuser
-    return { ok: true, value };
+    // Clé inconnue : refus explicite (anciennement accepté en V1 pour
+    // forward-compat — désormais bloqué, cf. hardening M1).
+    return {
+      ok: false,
+      error: `Clé de configuration inconnue : "${key}"`,
+      issues: null,
+    };
   }
+
+  // Cap de taille : on mesure la valeur sérialisée en JSON.
+  const serializedBytes = Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
+  if (serializedBytes > MAX_CONFIG_VALUE_BYTES) {
+    return {
+      ok: false,
+      error: `Valeur trop volumineuse pour la clé "${key}" (max ${MAX_CONFIG_VALUE_BYTES} octets)`,
+      issues: null,
+    };
+  }
+
   const result = schema.safeParse(value);
   if (result.success) {
     return { ok: true, value: result.data };

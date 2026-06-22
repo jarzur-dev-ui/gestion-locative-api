@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { DOCUMENT_TYPES_BY_ROLE } from './document-types.js';
+import type { DOCUMENT_TYPES_BY_ROLE } from './document-types.js';
 
 export const DOCUMENT_STATUSES = ['validated', 'pending_validation', 'rejected'] as const;
 export const DOCUMENT_ROLES = ['landlord', 'tenant', 'guarantor'] as const;
@@ -10,9 +10,7 @@ export const DOCUMENT_ROLES = ['landlord', 'tenant', 'guarantor'] as const;
  */
 const PERIOD_MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-export const PeriodMonthSchema = z
-  .string()
-  .regex(PERIOD_MONTH_REGEX, 'Format attendu : YYYY-MM');
+export const PeriodMonthSchema = z.string().regex(PERIOD_MONTH_REGEX, 'Format attendu : YYYY-MM');
 
 /**
  * Représentation publique d'un document. On expose volontairement PAS
@@ -56,10 +54,13 @@ export const DocumentListSchema = z.array(DocumentSchema).openapi('DocumentList'
 
 export const DocumentIdParamSchema = z
   .object({
-    id: z.string().uuid().openapi({
-      param: { name: 'id', in: 'path' },
-      example: '00000000-0000-0000-0000-000000000000',
-    }),
+    id: z
+      .string()
+      .uuid()
+      .openapi({
+        param: { name: 'id', in: 'path' },
+        example: '00000000-0000-0000-0000-000000000000',
+      }),
   })
   .openapi('DocumentIdParam');
 

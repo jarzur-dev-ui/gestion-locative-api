@@ -145,12 +145,8 @@
           "name": "audit_logs_actor_user_id_users_id_fk",
           "tableFrom": "audit_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -291,12 +287,8 @@
           "name": "document_shares_document_id_documents_id_fk",
           "tableFrom": "document_shares",
           "tableTo": "documents",
-          "columnsFrom": [
-            "document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["document_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -304,12 +296,8 @@
           "name": "document_shares_created_by_user_id_users_id_fk",
           "tableFrom": "document_shares",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -537,12 +525,8 @@
           "name": "documents_lease_id_leases_id_fk",
           "tableFrom": "documents",
           "tableTo": "leases",
-          "columnsFrom": [
-            "lease_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lease_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -550,12 +534,8 @@
           "name": "documents_property_id_properties_id_fk",
           "tableFrom": "documents",
           "tableTo": "properties",
-          "columnsFrom": [
-            "property_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["property_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -563,12 +543,8 @@
           "name": "documents_validated_by_user_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
-          "columnsFrom": [
-            "validated_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["validated_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -576,12 +552,8 @@
           "name": "documents_cancelled_by_user_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
-          "columnsFrom": [
-            "cancelled_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["cancelled_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -589,12 +561,8 @@
           "name": "documents_deleted_by_user_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
-          "columnsFrom": [
-            "deleted_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["deleted_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -602,12 +570,8 @@
           "name": "documents_uploaded_by_user_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
-          "columnsFrom": [
-            "uploaded_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["uploaded_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -777,12 +741,8 @@
           "name": "guarantors_user_id_users_id_fk",
           "tableFrom": "guarantors",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -790,12 +750,8 @@
           "name": "guarantors_created_by_user_id_users_id_fk",
           "tableFrom": "guarantors",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -909,12 +865,8 @@
           "name": "invitations_created_by_user_id_users_id_fk",
           "tableFrom": "invitations",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1023,12 +975,8 @@
           "name": "landlord_profiles_user_id_users_id_fk",
           "tableFrom": "landlord_profiles",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1062,12 +1010,8 @@
           "name": "lease_guarantors_lease_id_leases_id_fk",
           "tableFrom": "lease_guarantors",
           "tableTo": "leases",
-          "columnsFrom": [
-            "lease_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lease_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1075,12 +1019,8 @@
           "name": "lease_guarantors_guarantor_id_guarantors_id_fk",
           "tableFrom": "lease_guarantors",
           "tableTo": "guarantors",
-          "columnsFrom": [
-            "guarantor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["guarantor_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1088,10 +1028,7 @@
       "compositePrimaryKeys": {
         "lease_guarantors_lease_id_guarantor_id_pk": {
           "name": "lease_guarantors_lease_id_guarantor_id_pk",
-          "columns": [
-            "lease_id",
-            "guarantor_id"
-          ]
+          "columns": ["lease_id", "guarantor_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1122,12 +1059,8 @@
           "name": "lease_tenants_lease_id_leases_id_fk",
           "tableFrom": "lease_tenants",
           "tableTo": "leases",
-          "columnsFrom": [
-            "lease_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lease_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1135,12 +1068,8 @@
           "name": "lease_tenants_tenant_id_tenants_id_fk",
           "tableFrom": "lease_tenants",
           "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1148,10 +1077,7 @@
       "compositePrimaryKeys": {
         "lease_tenants_lease_id_tenant_id_pk": {
           "name": "lease_tenants_lease_id_tenant_id_pk",
-          "columns": [
-            "lease_id",
-            "tenant_id"
-          ]
+          "columns": ["lease_id", "tenant_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1316,12 +1242,8 @@
           "name": "leases_property_id_properties_id_fk",
           "tableFrom": "leases",
           "tableTo": "properties",
-          "columnsFrom": [
-            "property_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["property_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1447,12 +1369,8 @@
           "name": "properties_owner_user_id_users_id_fk",
           "tableFrom": "properties",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1608,12 +1526,8 @@
           "name": "rent_periods_lease_id_leases_id_fk",
           "tableFrom": "rent_periods",
           "tableTo": "leases",
-          "columnsFrom": [
-            "lease_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lease_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1621,12 +1535,8 @@
           "name": "rent_periods_notice_document_id_documents_id_fk",
           "tableFrom": "rent_periods",
           "tableTo": "documents",
-          "columnsFrom": [
-            "notice_document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["notice_document_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1634,12 +1544,8 @@
           "name": "rent_periods_paid_by_user_id_users_id_fk",
           "tableFrom": "rent_periods",
           "tableTo": "users",
-          "columnsFrom": [
-            "paid_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["paid_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1647,12 +1553,8 @@
           "name": "rent_periods_receipt_document_id_documents_id_fk",
           "tableFrom": "rent_periods",
           "tableTo": "documents",
-          "columnsFrom": [
-            "receipt_document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["receipt_document_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1662,10 +1564,7 @@
         "rent_periods_lease_month_unique": {
           "name": "rent_periods_lease_month_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "lease_id",
-            "period_month"
-          ]
+          "columns": ["lease_id", "period_month"]
         }
       },
       "policies": {},
@@ -1758,12 +1657,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1924,12 +1819,8 @@
           "name": "tenants_user_id_users_id_fk",
           "tableFrom": "tenants",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -1937,12 +1828,8 @@
           "name": "tenants_created_by_user_id_users_id_fk",
           "tableFrom": "tenants",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2005,9 +1892,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -2019,86 +1904,52 @@
     "public.audit_actor_type": {
       "name": "audit_actor_type",
       "schema": "public",
-      "values": [
-        "user",
-        "scheduler",
-        "system"
-      ]
+      "values": ["user", "scheduler", "system"]
     },
     "public.document_status": {
       "name": "document_status",
       "schema": "public",
-      "values": [
-        "validated",
-        "pending_validation",
-        "rejected"
-      ]
+      "values": ["validated", "pending_validation", "rejected"]
     },
     "public.guarantor_type": {
       "name": "guarantor_type",
       "schema": "public",
-      "values": [
-        "person",
-        "organization"
-      ]
+      "values": ["person", "organization"]
     },
     "public.invitation_target_type": {
       "name": "invitation_target_type",
       "schema": "public",
-      "values": [
-        "tenant",
-        "guarantor"
-      ]
+      "values": ["tenant", "guarantor"]
     },
     "public.charges_type": {
       "name": "charges_type",
       "schema": "public",
-      "values": [
-        "package",
-        "real"
-      ]
+      "values": ["package", "real"]
     },
     "public.lease_status": {
       "name": "lease_status",
       "schema": "public",
-      "values": [
-        "draft",
-        "active",
-        "ended"
-      ]
+      "values": ["draft", "active", "ended"]
     },
     "public.lease_type": {
       "name": "lease_type",
       "schema": "public",
-      "values": [
-        "empty",
-        "furnished"
-      ]
+      "values": ["empty", "furnished"]
     },
     "public.signature_method": {
       "name": "signature_method",
       "schema": "public",
-      "values": [
-        "handwritten_scanned"
-      ]
+      "values": ["handwritten_scanned"]
     },
     "public.rent_period_status": {
       "name": "rent_period_status",
       "schema": "public",
-      "values": [
-        "draft",
-        "notice_sent",
-        "paid"
-      ]
+      "values": ["draft", "notice_sent", "paid"]
     },
     "public.user_role": {
       "name": "user_role",
       "schema": "public",
-      "values": [
-        "landlord",
-        "tenant",
-        "guarantor"
-      ]
+      "values": ["landlord", "tenant", "guarantor"]
     }
   },
   "schemas": {},

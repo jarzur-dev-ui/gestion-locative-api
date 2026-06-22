@@ -79,7 +79,7 @@ let browserPromise: Promise<Browser> | null = null;
 let shutdownHandlersRegistered = false;
 
 async function getBrowser(): Promise<Browser> {
-  if (browser && browser.connected) {
+  if (browser?.connected) {
     return browser;
   }
   // Coalesce concurrent first calls so we don't spawn multiple Chromium
@@ -258,7 +258,9 @@ function landlordBlock(l: LandlordInfo): string {
 
 function tenantsBlock(tenants: TenantInfo[], property: PropertyInfo): string {
   const tenantsLabel = tenants.length > 1 ? 'Locataires' : 'Locataire';
-  const tenantLines = tenants.map((t) => `<div class="party-name">${formatPerson(t)}</div>`).join('');
+  const tenantLines = tenants
+    .map((t) => `<div class="party-name">${formatPerson(t)}</div>`)
+    .join('');
   return `
     <div class="party party-right">
       <div class="party-label">${tenantsLabel}</div>

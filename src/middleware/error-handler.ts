@@ -9,10 +9,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
   }
 
   if (err instanceof ZodError) {
-    return c.json(
-      { error: 'Validation échouée', issues: err.flatten().fieldErrors },
-      400,
-    );
+    return c.json({ error: 'Validation échouée', issues: err.flatten().fieldErrors }, 400);
   }
 
   logger.error({ err }, 'Erreur non gérée');

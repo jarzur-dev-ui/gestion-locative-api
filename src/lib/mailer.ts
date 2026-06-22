@@ -120,10 +120,7 @@ export async function sendEmail(message: MailMessage): Promise<SendResult> {
     );
     return { delivered: true, messageId: info.messageId };
   } catch (err) {
-    logger.error(
-      { err, to: message.to, subject: message.subject },
-      'mailer: email send failed',
-    );
+    logger.error({ err, to: message.to, subject: message.subject }, 'mailer: email send failed');
     return { delivered: false };
   }
 }

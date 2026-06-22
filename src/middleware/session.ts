@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
-import type { AppEnv } from '../types/app-env.js';
 import { getSessionWithUser, readSessionCookie } from '../modules/auth/session.service.js';
+import type { AppEnv } from '../types/app-env.js';
 
 /**
  * Middleware passif : charge la session + l'utilisateur depuis le cookie

@@ -226,4 +226,25 @@ describe('resetPassword', () => {
     // Le mot de passe ne doit PAS avoir été modifié (pas de delete sessions).
     expect(tx.delete).not.toHaveBeenCalled();
   });
+
+  // Hardening H1a — anti DoS hash-amplification : le hash Argon2 (coûteux) ne
+  // doit jamais s'exécuter tant que le token n'est pas validé ET consommé.
+  it('token invalide → ne calcule PAS le hash Argon2', async () => {
+    const { tx } = buildTx({ tokenRow: null, casRows: [] });
+    dbMock.transaction.mockImplementationOnce((cb: (t: unknown) => unknown) => cb(tx));
+
+    await resetPassword({ token: 'x', password: 'newpassword123' }).catch(() => undefined);
+
+    expect(hashPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('CAS concurrent perdant → ne calcule PAS le hash Argon2', async () => {
+    const tokenRow = { token: 'tok', userId: 'u1', usedAt: null, expiresAt: FUTURE };
+    const { tx } = buildTx({ tokenRow, casRows: [] });
+    dbMock.transaction.mockImplementationOnce((cb: (t: unknown) => unknown) => cb(tx));
+
+    await resetPassword({ token: 'tok', password: 'newpassword123' }).catch(() => undefined);
+
+    expect(hashPasswordMock).not.toHaveBeenCalled();
+  });
 });

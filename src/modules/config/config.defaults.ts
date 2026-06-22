@@ -17,7 +17,7 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
   {
     key: 'lease.default_payment_day',
     value: 5,
-    description: 'Jour du mois par défaut pour l\'échéance du loyer (1-31).',
+    description: "Jour du mois par défaut pour l'échéance du loyer (1-31).",
   },
   {
     key: 'lease.default_lease_type',
@@ -62,7 +62,7 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
       { value: 'active', labelKey: 'lease.statuses.active' },
       { value: 'ended', labelKey: 'lease.statuses.ended' },
     ],
-    description: 'États possibles d\'un bail.',
+    description: "États possibles d'un bail.",
   },
   {
     key: 'property.types',
@@ -104,7 +104,7 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
       { value: 'Action Logement', labelKey: 'guarantor.known.action_logement' },
       { value: 'GLI', labelKey: 'guarantor.known.gli' },
     ],
-    description: 'Suggestions d\'organisations de garantie connues (pour l\'autocomplete).',
+    description: "Suggestions d'organisations de garantie connues (pour l'autocomplete).",
   },
 
   // ─── Documents ───
@@ -115,7 +115,7 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
       { value: 'validated', labelKey: 'document.statuses.validated' },
       { value: 'rejected', labelKey: 'document.statuses.rejected' },
     ],
-    description: 'États possibles d\'un document.',
+    description: "États possibles d'un document.",
   },
 
   // ─── Adjustments / régularisations rent_periods ───
@@ -124,22 +124,26 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
     value: [
       { value: 'teom', labelKey: 'rent_period.adjustment_types.teom' },
       { value: 'previous_balance', labelKey: 'rent_period.adjustment_types.previous_balance' },
-      { value: 'charges_regularization', labelKey: 'rent_period.adjustment_types.charges_regularization' },
+      {
+        value: 'charges_regularization',
+        labelKey: 'rent_period.adjustment_types.charges_regularization',
+      },
       { value: 'other', labelKey: 'rent_period.adjustment_types.other' },
     ],
-    description: 'Types de régularisation ponctuelle pour une quittance (TEOM, solde antérieur, régul. charges).',
+    description:
+      'Types de régularisation ponctuelle pour une quittance (TEOM, solde antérieur, régul. charges).',
   },
 
   // ─── Limites applicatives ───
   {
     key: 'document.max_upload_bytes',
     value: 20 * 1024 * 1024,
-    description: 'Taille maximale d\'un upload (octets). Aligné sur MAX_UPLOAD_BYTES du backend.',
+    description: "Taille maximale d'un upload (octets). Aligné sur MAX_UPLOAD_BYTES du backend.",
   },
   {
     key: 'document.share.default_ttl_days',
     value: 7,
-    description: 'TTL par défaut d\'un partage de document.',
+    description: "TTL par défaut d'un partage de document.",
   },
   {
     key: 'rent_period.undo_window_hours',
@@ -150,6 +154,6 @@ export const CONFIG_DEFAULTS: ConfigDefault[] = [
     key: 'document.soft_delete_ttl_days',
     value: 90,
     description:
-      'Durée (jours) entre le soft-delete d\'un document et sa purge physique par le cron. Min 7, max 365.',
+      "Durée (jours) entre le soft-delete d'un document et sa purge physique par le cron. Min 7, max 365.",
   },
 ];

@@ -2,12 +2,12 @@ import { randomBytes } from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { sessions } from '../../db/schema/sessions.js';
 import type { Session } from '../../db/schema/sessions.js';
 import { users } from '../../db/schema/users.js';
 import type { User } from '../../db/schema/users.js';
-import { env } from '../../config/env.js';
 
 export const SESSION_COOKIE_NAME = 'gl_session';
 const SESSION_TTL_DAYS = 30;
@@ -59,10 +59,7 @@ export async function getSessionWithUser(token: string): Promise<SessionWithUser
   }
 
   // Refresh sliding-window : on bump last_seen_at à chaque requête authentifiée.
-  await db
-    .update(sessions)
-    .set({ lastSeenAt: new Date() })
-    .where(eq(sessions.id, token));
+  await db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.id, token));
 
   return row;
 }

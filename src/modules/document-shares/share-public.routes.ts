@@ -2,8 +2,8 @@ import { Readable } from 'node:stream';
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { stream } from 'hono/streaming';
-import { FileNotFoundError, readFileStream } from '../../lib/storage.js';
 import { logger } from '../../lib/logger.js';
+import { FileNotFoundError, readFileStream } from '../../lib/storage.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
 import { ShareTokenParamSchema } from './document-shares.schemas.js';
@@ -21,7 +21,7 @@ const publicDownloadRoute = createRoute({
   tags: [TAG],
   summary: 'Télécharger un document via un lien de partage public',
   description:
-    'Endpoint public — pas d\'authentification. Retourne 410 si le partage est expiré ou révoqué.',
+    "Endpoint public — pas d'authentification. Retourne 410 si le partage est expiré ou révoqué.",
   request: {
     params: ShareTokenParamSchema,
   },
@@ -58,9 +58,15 @@ const publicDownloadRoute = createRoute({
  * second si présent.
  */
 function sanitizeFilename(name: string): { ascii: string; utf8Encoded: string } {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ranges intentionnels
-  const stripped = name
-    .replace(/[\x00-\x1f\x7f]/g, '')
+  // On retire les caractères de contrôle (0x00–0x1F, 0x7F) sans regex à
+  // littéral de contrôle (cf. noControlCharactersInRegex) : on filtre par code
+  // point, c'est explicite et lint-safe.
+  const stripped = Array.from(name)
+    .filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code > 0x1f && code !== 0x7f;
+    })
+    .join('')
     .replace(/[\\/]/g, '_')
     .replace(/"/g, '')
     .trim()
@@ -70,7 +76,8 @@ function sanitizeFilename(name: string): { ascii: string; utf8Encoded: string } 
 
   // Version ASCII-only pour `filename=` (fallback historique). Les caractères
   // non-ASCII sont remplacés par '_' pour éviter les warnings côté browsers.
-  const ascii = safe.replace(/[^\x20-\x7e]/g, '_');
+  // 0x20–0x7E = plage ASCII imprimable ; pas de caractère de contrôle ici.
+  const ascii = safe.replace(/[^ -~]/g, '_');
 
   // Version UTF-8 percent-encodée pour `filename*=UTF-8''…` (RFC 5987).
   // encodeURIComponent gère le pourcent-encoding, on enlève juste les
@@ -148,6 +155,9 @@ sharePublicRoutes.openapi(publicDownloadRoute, async (c) => {
   // aux intermédiaires de ne pas le cacher (sinon une révocation manuelle
   // serait inopérante derrière un cache).
   c.header('Cache-Control', 'private, no-store');
+  // Empêche le MIME-sniffing du navigateur : le contenu est servi avec le
+  // type déclaré uniquement (anti XSS sur un fichier malveillant rendu inline).
+  c.header('X-Content-Type-Options', 'nosniff');
 
   // Hono `stream()` attend un WHATWG ReadableStream — on convertit le Node
   // Readable retourné par `readFileStream`. `Readable.toWeb` est dispo

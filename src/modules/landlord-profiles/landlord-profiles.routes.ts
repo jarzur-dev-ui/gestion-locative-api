@@ -4,10 +4,7 @@ import { recordUserAudit } from '../../lib/audit.js';
 import { requireAuth } from '../../middleware/require-auth.js';
 import type { AppEnv } from '../../types/app-env.js';
 import { ErrorResponseSchema } from '../auth/auth.schemas.js';
-import {
-  LandlordProfileSchema,
-  UpsertLandlordProfileSchema,
-} from './landlord-profiles.schemas.js';
+import { LandlordProfileSchema, UpsertLandlordProfileSchema } from './landlord-profiles.schemas.js';
 import {
   getByUserId,
   toPublicLandlordProfile,

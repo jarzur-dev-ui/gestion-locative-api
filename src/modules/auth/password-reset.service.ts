@@ -77,8 +77,6 @@ export async function resetPassword(opts: {
   token: string;
   password: string;
 }): Promise<{ userId: string }> {
-  const passwordHash = await hashPassword(opts.password);
-
   return db.transaction(async (tx) => {
     const [resetToken] = await tx
       .select()
@@ -109,6 +107,12 @@ export async function resetPassword(opts: {
     if (consumed.length === 0) {
       throw new HTTPException(410, { message: 'Lien déjà utilisé' });
     }
+
+    // Anti DoS (hash-amplification) : le hash Argon2 est coûteux (CPU + RAM).
+    // On ne le calcule qu'APRÈS avoir validé ET consommé le token (CAS
+    // `usedAt IS NULL` réussi) — un attaquant qui spamme l'endpoint avec un
+    // token invalide est rejeté avant tout travail cryptographique.
+    const passwordHash = await hashPassword(opts.password);
 
     await tx
       .update(users)

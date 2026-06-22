@@ -8,8 +8,6 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().url(),
 
-  COOKIE_SECRET: z.string().min(32, 'COOKIE_SECRET doit faire au moins 32 caractères'),
-
   CORS_ORIGIN: z.string().url(),
 
   SMTP_HOST: z.string().optional(),
@@ -24,7 +22,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌ Variables d\'environnement invalides :');
+  console.error("❌ Variables d'environnement invalides :");
   console.error(parsed.error.flatten().fieldErrors);
   process.exit(1);
 }
