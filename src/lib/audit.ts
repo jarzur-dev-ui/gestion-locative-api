@@ -40,6 +40,8 @@ export type AuditAction =
   | 'rent_period.mark_paid'
   | 'rent_period.mark_unpaid'
   | 'rent_period.send_notice'
+  | 'rent_period.send_cycle'
+  | 'rent_period.send_receipt'
   | 'config.update'
   | 'landlord_profile.update'
   | 'migration.import';

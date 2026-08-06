@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { leases } from '../db/schema/leases.js';
 import { properties } from '../db/schema/properties.js';
 import { rentPeriods } from '../db/schema/rent-periods.js';
+import { recordSchedulerAudit } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import {
   computeDueDate,
@@ -116,6 +117,16 @@ async function sendDueCycles(): Promise<{ delivered: number; failed: number }> {
       const result = await sendLeaseCycle(leaseId, ownerUserId, new Date(), NOTICE_LEAD_DAYS);
       if (result.delivered) {
         delivered += 1;
+        await recordSchedulerAudit({
+          action: 'rent_period.send_cycle',
+          entityType: 'lease',
+          entityId: leaseId,
+          payload: {
+            automated: true,
+            receiptCount: result.receiptCount,
+            noticeSent: result.noticeSent,
+          },
+        });
       }
     } catch (err) {
       failed += 1;

@@ -279,6 +279,11 @@ rentPeriodsRoutes.openapi(sendReceiptRoute, async (c) => {
   const user = c.get('user')!;
   const { id } = c.req.valid('param');
   const row = await deliverReceiptOnDemand(id, user.id);
+  await recordUserAudit(c, user.id, {
+    action: 'rent_period.send_receipt',
+    entityType: 'rent_period',
+    entityId: row.id,
+  });
   return c.json(row, 200);
 });
 
