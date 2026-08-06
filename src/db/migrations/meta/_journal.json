@@ -50,6 +50,13 @@
       "when": 1782076850926,
       "tag": "0006_loose_triathlon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786055130507,
+      "tag": "0007_dazzling_amazoness",
+      "breakpoints": true
     }
   ]
 }

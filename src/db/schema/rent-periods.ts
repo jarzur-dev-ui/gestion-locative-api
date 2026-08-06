@@ -68,6 +68,10 @@ export const rentPeriods = pgTable(
     receiptDocumentId: uuid('receipt_document_id').references(() => documents.id, {
       onDelete: 'set null',
     }),
+    // Délivrance de la quittance au locataire (via le document de cycle ou un
+    // envoi à la demande). Distinct de `paidAt` : une période peut être payée
+    // sans quittance encore envoyée — elle part dans le document du cycle suivant.
+    receiptDeliveredAt: timestamp('receipt_delivered_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
