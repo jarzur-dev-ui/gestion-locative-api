@@ -75,16 +75,15 @@ export function computeTotalDueCents(
 }
 
 /**
- * Retourne le mois "à générer" pour le scheduler — le mois courant (jour 1
- * inclus). Sémantique : à J0 de M, on crée la période de M pour M.
- *
- * On opère en UTC pour stabilité (le scheduler tourne potentiellement dans
- * un fuseau différent du serveur applicatif ; on évite les bugs de bordure
- * de mois sur les conteneurs en UTC vs developer machine en Europe/Paris).
+ * Mois à provisionner par le scheduler = le **mois suivant**. Créer la période
+ * en avance permet d'envoyer l'avis d'échéance quelques jours avant une échéance
+ * en début de mois (une période créée le 1er interdirait tout avis avant le 1er).
+ * UTC + `Date.UTC(y, m+1, 1)` normalise décembre → janvier de l'année suivante.
  */
 export function getNextPeriodMonth(now: Date = new Date()): string {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + 1; // 1..12
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const y = next.getUTCFullYear();
+  const m = next.getUTCMonth() + 1; // 1..12
   return `${y}-${String(m).padStart(2, '0')}`;
 }
 
