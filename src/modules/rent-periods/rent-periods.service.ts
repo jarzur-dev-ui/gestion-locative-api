@@ -29,7 +29,7 @@ import {
 } from '../../lib/pdf-renderer.js';
 import { readFileBuffer, storeFile } from '../../lib/storage.js';
 import { type CyclePeriodRow, assembleCycleDocument } from './cycle-document.js';
-import { type CyclePeriodInput, planLeaseCycle } from './cycle-planning.js';
+import { type CyclePeriodInput, type LeaseCyclePlan, planLeaseCycle } from './cycle-planning.js';
 import { computeTotalDueCents, firstDayToPeriodMonth } from './period-generation.js';
 import type {
   RentPeriodPublic,
@@ -758,6 +758,22 @@ export async function sendLeaseCycle(
     return { delivered: false, receiptCount: 0, noticeSent: false };
   }
 
+  return deliverCycleForPlan(leaseId, ownerUserId, periodRows, plan, now);
+}
+
+/**
+ * Assemble, stocke et délivre le document couvert par `plan` (quittances +
+ * avis éventuel), puis marque en base — extrait de `sendLeaseCycle` pour être
+ * réutilisé par la quittance à la demande (plan à une seule quittance, sans
+ * avis). Même gating strict : rien n'est marqué si l'email n'est pas délivré.
+ */
+async function deliverCycleForPlan(
+  leaseId: string,
+  ownerUserId: string,
+  periodRows: RentPeriod[],
+  plan: LeaseCyclePlan,
+  now: Date,
+): Promise<{ delivered: boolean; receiptCount: number; noticeSent: boolean }> {
   const ctx = await loadLeaseContextForPdf(leaseId);
 
   const periodsById = new Map(periodRows.map((p) => [p.id, p]));
@@ -903,4 +919,48 @@ export async function sendLeaseCycle(
     receiptCount: plan.receiptPeriodIds.length,
     noticeSent: plan.noticePeriodId !== null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// POST /:id/send-receipt
+// ---------------------------------------------------------------------------
+
+/**
+ * Renvoie à la demande la quittance d'UNE période payée précise, seule (pas
+ * d'avis). Réutilise `deliverCycleForPlan` avec un plan à une seule quittance.
+ * Renvoi autorisé même si déjà délivrée (le locataire a pu perdre le
+ * document) — seul le statut `paid` est requis.
+ */
+export async function deliverReceiptOnDemand(
+  periodId: string,
+  userId: string,
+): Promise<RentPeriodPublic> {
+  const period = await getRentPeriodForOwner(periodId, userId);
+
+  if (period.statusKey !== 'paid') {
+    throw new HTTPException(409, {
+      message: 'La quittance ne peut être envoyée que pour une période payée',
+    });
+  }
+
+  const periodRows = await db
+    .select()
+    .from(rentPeriods)
+    .where(eq(rentPeriods.leaseId, period.leaseId));
+
+  const plan: LeaseCyclePlan = {
+    receiptPeriodIds: [periodId],
+    noticePeriodId: null,
+    previousBalanceCents: 0,
+  };
+
+  const result = await deliverCycleForPlan(period.leaseId, userId, periodRows, plan, new Date());
+
+  if (!result.delivered) {
+    throw new HTTPException(502, {
+      message: 'L’envoi de la quittance a échoué — réessayez',
+    });
+  }
+
+  return getByIdForOwner(periodId, userId);
 }

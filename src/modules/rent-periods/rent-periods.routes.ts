@@ -12,6 +12,7 @@ import {
   UpdateRentPeriodSchema,
 } from './rent-periods.schemas.js';
 import {
+  deliverReceiptOnDemand,
   getByIdForOwner,
   listForOwner,
   markPaid,
@@ -177,6 +178,42 @@ const markPaidRoute = createRoute({
   },
 });
 
+const sendReceiptRoute = createRoute({
+  method: 'post',
+  path: '/{id}/send-receipt',
+  tags: [TAG],
+  summary: 'Envoyer la quittance de la période à la demande',
+  request: {
+    params: RentPeriodIdParamSchema,
+  },
+  responses: {
+    200: {
+      description: 'Quittance envoyée',
+      content: { 'application/json': { schema: RentPeriodSchema } },
+    },
+    401: {
+      description: 'Non authentifié',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description: 'Accès refusé',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: 'Période introuvable',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    409: {
+      description: 'État incompatible (statut différent de "paid")',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    502: {
+      description: 'Échec de l’envoi de la quittance',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
 const markUnpaidRoute = createRoute({
   method: 'post',
   path: '/{id}/mark-unpaid',
@@ -281,6 +318,13 @@ rentPeriodsRoutes.openapi(markPaidRoute, async (c) => {
     entityType: 'rent_period',
     entityId: row.id,
   });
+  return c.json(row, 200);
+});
+
+rentPeriodsRoutes.openapi(sendReceiptRoute, async (c) => {
+  const user = c.get('user')!;
+  const { id } = c.req.valid('param');
+  const row = await deliverReceiptOnDemand(id, user.id);
   return c.json(row, 200);
 });
 
