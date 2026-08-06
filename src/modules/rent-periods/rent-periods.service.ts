@@ -9,7 +9,11 @@ import { properties } from '../../db/schema/properties.js';
 import type { Adjustment, RentPeriod } from '../../db/schema/rent-periods.js';
 import { rentPeriods } from '../../db/schema/rent-periods.js';
 import { tenants } from '../../db/schema/tenants.js';
-import { renderCancellationEmail, renderRentNoticeEmail } from '../../lib/email-templates.js';
+import {
+  renderCancellationEmail,
+  renderCycleEmail,
+  renderRentNoticeEmail,
+} from '../../lib/email-templates.js';
 import { logger } from '../../lib/logger.js';
 import { sendEmail } from '../../lib/mailer.js';
 import {
@@ -20,9 +24,12 @@ import {
   formatDate,
   formatEur,
   formatMonth,
+  renderCycleDocumentPdf,
   renderRentNoticePdf,
 } from '../../lib/pdf-renderer.js';
 import { readFileBuffer, storeFile } from '../../lib/storage.js';
+import { type CyclePeriodRow, assembleCycleDocument } from './cycle-document.js';
+import { type CyclePeriodInput, planLeaseCycle } from './cycle-planning.js';
 import { computeTotalDueCents, firstDayToPeriodMonth } from './period-generation.js';
 import type {
   RentPeriodPublic,
@@ -709,4 +716,191 @@ export async function markUnpaid(id: string, userId: string): Promise<RentPeriod
 
   const tenantsList = await loadTenantSummaries(updatedPeriod.leaseId);
   return toPublicRentPeriod(updatedPeriod, tenantsList);
+}
+
+// ---------------------------------------------------------------------------
+// POST /:leaseId/send-cycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Émet le document de cycle d'un bail : un document unique combinant les
+ * quittances des périodes payées non encore délivrées + l'avis d'échéance du
+ * terme à venir (avec solde antérieur). `planLeaseCycle` décide quoi inclure,
+ * `assembleCycleDocument` + `renderCycleDocumentPdf` produisent le PDF.
+ *
+ * Orchestration calquée sur `sendNotice` (PDF + storage hors transaction,
+ * écritures DB en transaction) avec une différence majeure : l'envoi email
+ * n'est PAS best-effort ici. Le marquage (receiptDeliveredAt / notice_sent)
+ * ne survient QUE si l'email a été délivré à au moins un destinataire — sinon
+ * les périodes repartent au cycle suivant plutôt que d'être considérées
+ * délivrées sans preuve de remise.
+ */
+export async function sendLeaseCycle(
+  leaseId: string,
+  ownerUserId: string,
+  now: Date = new Date(),
+  leadDays = 3,
+): Promise<{ delivered: boolean; receiptCount: number; noticeSent: boolean }> {
+  const periodRows = await db.select().from(rentPeriods).where(eq(rentPeriods.leaseId, leaseId));
+
+  const inputs: CyclePeriodInput[] = periodRows.map((p) => ({
+    id: p.id,
+    dueDate: p.dueDate,
+    statusKey: p.statusKey,
+    totalDueCents: p.totalDueCents,
+    receiptDeliveredAt: p.receiptDeliveredAt,
+  }));
+
+  const plan = planLeaseCycle(inputs, now, leadDays);
+
+  if (plan.receiptPeriodIds.length === 0 && plan.noticePeriodId === null) {
+    logger.info({ leaseId }, 'rent-periods: send-cycle no-op, nothing to send this cycle');
+    return { delivered: false, receiptCount: 0, noticeSent: false };
+  }
+
+  const ctx = await loadLeaseContextForPdf(leaseId);
+
+  const periodsById = new Map(periodRows.map((p) => [p.id, p]));
+  const rows: CyclePeriodRow[] = periodRows.map((p) => ({
+    id: p.id,
+    periodMonth: p.periodMonth,
+    baseRentCents: p.baseRentCents,
+    baseChargesCents: p.baseChargesCents,
+    adjustments: p.adjustments,
+    totalDueCents: p.totalDueCents,
+    dueDate: p.dueDate,
+    paidAt: p.paidAt,
+  }));
+
+  const documentData = assembleCycleDocument(ctx, rows, plan, now);
+  const pdfBuffer = await renderCycleDocumentPdf(documentData);
+
+  // Nom de fichier / periodMonth du document basés sur la période notice, ou
+  // à défaut la 1ʳᵉ quittance (toujours défini vu la garde no-op ci-dessus).
+  const referencePeriodId = plan.noticePeriodId ?? plan.receiptPeriodIds[0];
+  const referencePeriod = referencePeriodId ? periodsById.get(referencePeriodId) : undefined;
+  if (!referencePeriod) {
+    throw new Error('rent-periods: send-cycle reference period not found — inconsistent plan');
+  }
+  const referencePeriodMonthStr = firstDayToPeriodMonth(referencePeriod.periodMonth);
+
+  const filename = `cycle-${referencePeriodMonthStr}.pdf`;
+  const stored = await storeFile(pdfBuffer, 'application/pdf', filename);
+
+  // Envoi des emails d'abord : le marquage en base dépend de son succès.
+  const landlordName = landlordDisplayName(ctx.landlord);
+  const propertyAddress = buildPropertyAddress(ctx.property);
+  const recipients = ctx.tenantsWithEmail.filter((t) => t.email && t.email.length > 0);
+
+  let delivered = false;
+  if (recipients.length > 0) {
+    const results = await Promise.all(
+      recipients.map(async (t) => {
+        const { subject, html, text } = renderCycleEmail({
+          recipientName: tenantDisplayName(t),
+          landlordName,
+          propertyAddress,
+          appUrl: `${WEB_APP_BASE_URL}/leases/${leaseId}`,
+        });
+        return sendEmail({
+          to: t.email,
+          subject,
+          html,
+          text,
+          attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
+        });
+      }),
+    );
+    delivered = results.every((r) => r.delivered);
+  }
+
+  if (!delivered) {
+    // Rien n'est marqué : le fichier reste stocké (pas d'orphelin DB puisque
+    // aucune ligne `documents` n'a été créée) et le cycle sera retenté au
+    // prochain passage du scheduler.
+    logger.warn(
+      { leaseId, recipientCount: recipients.length, filePath: stored.path },
+      'rent-periods: cycle document not delivered — nothing marked, will retry next cycle',
+    );
+    return { delivered: false, receiptCount: plan.receiptPeriodIds.length, noticeSent: false };
+  }
+
+  // Type de document existant le plus adapté au contenu réellement envoyé :
+  // le document contient au moins une quittance dès que receiptPeriodIds
+  // n'est pas vide (cf. titre du PDF dans pdf-renderer), sinon c'est un avis pur.
+  const documentTypeKey = plan.receiptPeriodIds.length > 0 ? 'rent_receipt' : 'rent_notice';
+
+  try {
+    await db.transaction(async (tx) => {
+      const txNow = new Date();
+
+      const [doc] = await tx
+        .insert(documents)
+        .values({
+          leaseId,
+          documentTypeKey,
+          periodMonth: referencePeriodMonthStr,
+          filePath: stored.path,
+          fileSizeBytes: stored.sizeBytes,
+          mimeType: stored.mimeType,
+          originalFilename: stored.originalFilename,
+          statusKey: 'validated',
+          validatedAt: txNow,
+          validatedByUserId: ownerUserId,
+          uploadedByUserId: ownerUserId,
+          updatedAt: txNow,
+        })
+        .returning();
+
+      if (!doc) {
+        throw new Error('Échec de l’insertion du document de cycle');
+      }
+
+      // Verrou simple sur l'id : ces périodes sont déjà `paid`, pas de
+      // machine d'état à protéger ici (juste la délivrance de la quittance).
+      for (const periodId of plan.receiptPeriodIds) {
+        await tx
+          .update(rentPeriods)
+          .set({
+            receiptDeliveredAt: txNow,
+            receiptDocumentId: doc.id,
+            updatedAt: txNow,
+          })
+          .where(eq(rentPeriods.id, periodId));
+      }
+
+      if (plan.noticePeriodId !== null) {
+        // Verrou optimiste sur `draft` : si une autre transaction a déjà fait
+        // basculer la période entre-temps, on rollback (cohérent avec sendNotice).
+        const [rp] = await tx
+          .update(rentPeriods)
+          .set({
+            statusKey: 'notice_sent',
+            noticeSentAt: txNow,
+            noticeDocumentId: doc.id,
+            updatedAt: txNow,
+          })
+          .where(and(eq(rentPeriods.id, plan.noticePeriodId), eq(rentPeriods.statusKey, 'draft')))
+          .returning();
+
+        if (!rp) {
+          throw new HTTPException(409, {
+            message: 'État de la période modifié entre-temps — réessayez',
+          });
+        }
+      }
+    });
+  } catch (err) {
+    logger.warn(
+      { err, leaseId, filePath: stored.path },
+      'rent-periods: send-cycle transaction failed, file kept on disk for debug',
+    );
+    throw err;
+  }
+
+  return {
+    delivered: true,
+    receiptCount: plan.receiptPeriodIds.length,
+    noticeSent: plan.noticePeriodId !== null,
+  };
 }

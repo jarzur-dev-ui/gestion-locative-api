@@ -223,6 +223,43 @@ export function renderRentReceiptEmail(opts: {
   return { subject, html, text };
 }
 
+export function renderCycleEmail(opts: {
+  recipientName: string;
+  landlordName: string;
+  propertyAddress: string;
+  appUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = "Votre quittance et avis d'échéance";
+
+  const html = shell(`
+    <h1 style="font-size:20px;margin:0 0 16px;">Bonjour ${escapeHtml(opts.recipientName)},</h1>
+    <p style="line-height:1.5;margin:0 0 16px;">
+      Vous trouverez ci-joint un document combinant la quittance du terme payé et l'avis
+      d'échéance du terme à venir, pour le logement situé :
+    </p>
+    <p style="line-height:1.5;margin:0 0 16px;padding:12px 16px;background-color:#f9fafb;border-radius:6px;">
+      ${escapeHtml(opts.propertyAddress)}
+    </p>
+    ${button('Consulter le document', opts.appUrl)}
+    <p style="line-height:1.5;margin:24px 0 0;font-size:13px;color:#6b7280;">
+      Bailleur : ${escapeHtml(opts.landlordName)}
+    </p>
+  `);
+
+  const text = [
+    `Bonjour ${opts.recipientName},`,
+    '',
+    "Vous trouverez ci-joint un document combinant la quittance du terme payé et l'avis d'échéance du terme à venir, pour le logement situé :",
+    opts.propertyAddress,
+    '',
+    `Consulter le document : ${opts.appUrl}`,
+    '',
+    `Bailleur : ${opts.landlordName}`,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
 export function renderShareEmail(opts: {
   documentLabel: string;
   shareUrl: string;
