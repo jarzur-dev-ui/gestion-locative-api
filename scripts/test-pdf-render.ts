@@ -8,11 +8,13 @@
  */
 import { writeFile } from 'node:fs/promises';
 import {
-  closePdfBrowser,
-  renderRentNoticePdf,
-  renderRentReceiptPdf,
+  type CycleDocumentData,
   type RentNoticeData,
   type RentReceiptData,
+  closePdfBrowser,
+  renderCycleDocumentPdf,
+  renderRentNoticePdf,
+  renderRentReceiptPdf,
 } from '../src/lib/pdf-renderer.js';
 
 const sampleReceipt: RentReceiptData = {
@@ -56,6 +58,43 @@ const sampleNotice: RentNoticeData = {
   dueDate: '2026-06-05',
 };
 
+// Document de cycle façon agence : quittance du mois payé + avis du mois à venir.
+const sampleCycle: CycleDocumentData = {
+  landlord: sampleReceipt.landlord,
+  tenants: sampleReceipt.tenants,
+  property: sampleReceipt.property,
+  receipts: [
+    {
+      periodMonth: '2026-08',
+      baseRentCents: 85000,
+      baseChargesCents: 12000,
+      adjustments: [],
+      totalDueCents: 97000,
+      paidAt: '2026-08-01',
+    },
+  ],
+  notice: {
+    periodMonth: '2026-09',
+    baseRentCents: 85000,
+    baseChargesCents: 12000,
+    adjustments: [],
+    totalDueCents: 97000,
+    dueDate: '2026-09-01',
+    previousBalanceCents: 0,
+  },
+  generatedAt: new Date(),
+};
+
+// Variante impayé : pas de quittance, l'échu passe en solde antérieur.
+const sampleCycleArrears: CycleDocumentData = {
+  ...sampleCycle,
+  receipts: [],
+  notice: {
+    ...(sampleCycle.notice as NonNullable<CycleDocumentData['notice']>),
+    previousBalanceCents: 97000,
+  },
+};
+
 async function main(): Promise<void> {
   try {
     const receiptBuf = await renderRentReceiptPdf(sampleReceipt);
@@ -67,6 +106,16 @@ async function main(): Promise<void> {
     const noticePath = '/tmp/test-avis-echeance.pdf';
     await writeFile(noticePath, noticeBuf);
     console.log(`OK  Avis      : ${noticePath} (${noticeBuf.byteLength} bytes)`);
+
+    const cycleBuf = await renderCycleDocumentPdf(sampleCycle);
+    const cyclePath = '/tmp/test-cycle.pdf';
+    await writeFile(cyclePath, cycleBuf);
+    console.log(`OK  Cycle     : ${cyclePath} (${cycleBuf.byteLength} bytes)`);
+
+    const cycleArrearsBuf = await renderCycleDocumentPdf(sampleCycleArrears);
+    const cycleArrearsPath = '/tmp/test-cycle-arrears.pdf';
+    await writeFile(cycleArrearsPath, cycleArrearsBuf);
+    console.log(`OK  Cycle+solde: ${cycleArrearsPath} (${cycleArrearsBuf.byteLength} bytes)`);
   } catch (err) {
     console.error('FAIL', err);
     process.exitCode = 1;

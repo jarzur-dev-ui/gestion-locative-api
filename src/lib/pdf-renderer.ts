@@ -445,6 +445,17 @@ const BASE_STYLES = `
     color: #94a3b8;
     text-align: center;
   }
+  /* Document de cycle : compacté pour tenir quittance + avis sur une page. */
+  .cycle .header { margin-bottom: 14px; padding-bottom: 10px; }
+  .cycle .title-block { margin: 14px 0 6px; }
+  .cycle .title-block h1 { font-size: 14pt; }
+  .cycle .title-block .period { font-size: 10.5pt; margin-top: 2px; }
+  .cycle table.amounts { margin: 8px 0 12px; }
+  .cycle table.amounts th, .cycle table.amounts td { padding: 5px 10px; }
+  .cycle table.amounts tfoot td { font-size: 11pt; }
+  .cycle .mention { margin: 12px 0; padding: 8px 12px; }
+  .cycle .signature { margin-top: 16px; }
+  .cycle .footer { margin-top: 20px; padding-top: 8px; }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
@@ -539,6 +550,140 @@ export function renderRentNoticeHtml(data: RentNoticeData): string {
 }
 
 // ---------------------------------------------------------------------------
+// Document de cycle : N quittances (mois payés) + 1 avis d'échéance (mois à
+// venir) avec solde antérieur, en un seul document / un seul email.
+// ---------------------------------------------------------------------------
+
+export type CycleReceiptSection = {
+  periodMonth: string;
+  baseRentCents: number;
+  baseChargesCents: number;
+  adjustments: RentAdjustment[];
+  totalDueCents: number;
+  /** ISO 'YYYY-MM-DD'. */
+  paidAt: string;
+};
+
+export type CycleNoticeSection = {
+  periodMonth: string;
+  baseRentCents: number;
+  baseChargesCents: number;
+  adjustments: RentAdjustment[];
+  totalDueCents: number;
+  /** ISO 'YYYY-MM-DD'. */
+  dueDate: string;
+  /** Solde antérieur (Σ des périodes échues non payées). 0 si à jour. */
+  previousBalanceCents: number;
+};
+
+export type CycleDocumentData = {
+  landlord: LandlordInfo;
+  tenants: TenantInfo[];
+  property: PropertyInfo;
+  receipts: CycleReceiptSection[];
+  notice: CycleNoticeSection | null;
+  generatedAt: Date;
+};
+
+/** Tableau de l'avis : ajoute solde antérieur + solde débiteur cumulé si arriéré. */
+function noticeAmountsTable(n: CycleNoticeSection): string {
+  const hasArrears = n.previousBalanceCents > 0;
+  const grandTotal = n.totalDueCents + n.previousBalanceCents;
+  return `
+    <table class="amounts">
+      <thead>
+        <tr><th>Détail</th><th class="amount">Montant</th></tr>
+      </thead>
+      <tbody>
+        ${
+          hasArrears
+            ? `<tr><td>Solde antérieur</td><td class="amount">${formatEur(n.previousBalanceCents)}</td></tr>`
+            : ''
+        }
+        <tr><td>Loyer hors charges</td><td class="amount">${formatEur(n.baseRentCents)}</td></tr>
+        <tr><td>Charges</td><td class="amount">${formatEur(n.baseChargesCents)}</td></tr>
+        ${adjustmentsRows(n.adjustments)}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>${hasArrears ? 'Solde débiteur' : 'Total'}</td>
+          <td class="amount">${formatEur(grandTotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function cycleReceiptSectionHtml(r: CycleReceiptSection, landlord: LandlordInfo): string {
+  const periodLabel = formatMonth(r.periodMonth);
+  const paidAtLabel = formatDate(r.paidAt);
+  return `
+    <section class="title-block">
+      <h1>Quittance de loyer</h1>
+      <div class="period">Période : ${esc(periodLabel)}</div>
+    </section>
+
+    ${amountsTable(r)}
+
+    <section class="mention">
+      Je soussigné(e) ${formatPerson(landlord)}, bailleur, déclare avoir reçu la
+      somme de <strong>${formatEur(r.totalDueCents)}</strong> au titre du loyer et
+      des charges de la période de ${esc(periodLabel)}, et en donne quittance au(x)
+      locataire(s), sous réserve de tous mes droits.<br/>
+      Pour acquit, le ${esc(paidAtLabel)}.
+    </section>
+  `;
+}
+
+function cycleNoticeSectionHtml(n: CycleNoticeSection): string {
+  const periodLabel = formatMonth(n.periodMonth);
+  const dueDateLabel = formatDate(n.dueDate);
+  // Volontairement pas d'IBAN sur le document : éviter qu'un locataire le
+  // récupère ici pour le réutiliser sur des factures.
+  return `
+    <section class="title-block">
+      <h1>Avis d'échéance</h1>
+      <div class="period">Période : ${esc(periodLabel)}</div>
+    </section>
+
+    ${noticeAmountsTable(n)}
+
+    <section class="mention">
+      Cet avis vous informe du montant dû au titre du loyer et des charges de la
+      période de ${esc(periodLabel)}.<br/>
+      <strong>À régler avant le ${esc(dueDateLabel)}</strong>.
+    </section>
+  `;
+}
+
+export function renderCycleDocumentHtml(data: CycleDocumentData): string {
+  if (data.receipts.length === 0 && !data.notice) {
+    throw new Error('pdf-renderer: cycle document requires at least one receipt or a notice');
+  }
+  if (!Array.isArray(data.tenants) || data.tenants.length < 1) {
+    throw new Error('pdf-renderer: at least one tenant is required');
+  }
+
+  const title = data.receipts.length > 0 ? 'Quittance de loyer' : "Avis d'échéance";
+  const body = `
+    <div class="cycle">
+      <section class="header">
+        ${landlordBlock(data.landlord)}
+        ${tenantsBlock(data.tenants, data.property)}
+      </section>
+
+      ${data.receipts.map((r) => cycleReceiptSectionHtml(r, data.landlord)).join('')}
+      ${data.notice ? cycleNoticeSectionHtml(data.notice) : ''}
+
+      ${signatureBlock(data.landlord)}
+
+      ${footerHtml(data.generatedAt)}
+    </div>
+  `;
+  return wrapDocument(title, body);
+}
+
+// ---------------------------------------------------------------------------
 // PDF rendering (Buffer)
 // ---------------------------------------------------------------------------
 
@@ -594,6 +739,21 @@ export async function renderRentNoticePdf(data: RentNoticeData): Promise<Buffer>
   logger.info(
     { periodMonth: data.periodMonth, sizeBytes: buf.byteLength, durationMs: Date.now() - start },
     'pdf-renderer: rent notice — done',
+  );
+  return buf;
+}
+
+export async function renderCycleDocumentPdf(data: CycleDocumentData): Promise<Buffer> {
+  const start = Date.now();
+  logger.info(
+    { receipts: data.receipts.length, hasNotice: data.notice != null },
+    'pdf-renderer: cycle document — start',
+  );
+  const html = renderCycleDocumentHtml(data);
+  const buf = await htmlToPdfBuffer(html);
+  logger.info(
+    { sizeBytes: buf.byteLength, durationMs: Date.now() - start },
+    'pdf-renderer: cycle document — done',
   );
   return buf;
 }
