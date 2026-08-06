@@ -9,24 +9,18 @@ import { properties } from '../../db/schema/properties.js';
 import type { Adjustment, RentPeriod } from '../../db/schema/rent-periods.js';
 import { rentPeriods } from '../../db/schema/rent-periods.js';
 import { tenants } from '../../db/schema/tenants.js';
-import {
-  renderCancellationEmail,
-  renderRentNoticeEmail,
-  renderRentReceiptEmail,
-} from '../../lib/email-templates.js';
+import { renderCancellationEmail, renderRentNoticeEmail } from '../../lib/email-templates.js';
 import { logger } from '../../lib/logger.js';
 import { sendEmail } from '../../lib/mailer.js';
 import {
   type LandlordInfo,
   type PropertyInfo,
   type RentNoticeData,
-  type RentReceiptData,
   type TenantInfo,
   formatDate,
   formatEur,
   formatMonth,
   renderRentNoticePdf,
-  renderRentReceiptPdf,
 } from '../../lib/pdf-renderer.js';
 import { readFileBuffer, storeFile } from '../../lib/storage.js';
 import { computeTotalDueCents, firstDayToPeriodMonth } from './period-generation.js';
@@ -545,11 +539,12 @@ export async function sendNotice(id: string, userId: string): Promise<RentPeriod
 // ---------------------------------------------------------------------------
 
 /**
- * Marque la période comme payée et émet la quittance :
+ * Enregistre le paiement d'une période de loyer (statut → `paid`).
  *  - Autorisé depuis `draft` (skip avis — cas plus rare mais légitime, ex:
  *    paiement reçu avant émission de l'avis) ou `notice_sent` (cas nominal).
- *  - Génère le PDF de quittance, INSERT le document, UPDATE la période.
- *  - Envoie la quittance par email aux locataires (PDF en pièce jointe).
+ *  - Ne génère plus de PDF ni d'email de quittance ici : la quittance sera
+ *    délivrée ultérieurement via le document de cycle fusionné (autre
+ *    chantier).
  */
 export async function markPaid(id: string, userId: string): Promise<RentPeriodPublic> {
   const period = await getRentPeriodForOwner(id, userId);
@@ -568,134 +563,28 @@ export async function markPaid(id: string, userId: string): Promise<RentPeriodPu
 
   assertNonNegativeTotal(period.totalDueCents);
 
-  const ctx = await loadLeaseContextForPdf(period.leaseId);
-  const periodMonthStr = firstDayToPeriodMonth(period.periodMonth);
   const now = new Date();
-  // 'YYYY-MM-DD' UTC pour la mention "Pour acquit, le …".
-  const paidAtIsoDate = now.toISOString().slice(0, 10);
-
-  const receiptData: RentReceiptData = {
-    landlord: ctx.landlord,
-    tenants: ctx.tenants,
-    property: ctx.property,
-    periodMonth: periodMonthStr,
-    baseRentCents: period.baseRentCents,
-    baseChargesCents: period.baseChargesCents,
-    adjustments: period.adjustments.map((a) => ({
-      labelKey: a.labelKey ?? a.type,
-      amountCents: a.amountCents,
-      label: a.label,
-    })),
-    totalDueCents: period.totalDueCents,
-    paidAt: paidAtIsoDate,
-    generatedAt: now,
-  };
-
-  const pdfBuffer = await renderRentReceiptPdf(receiptData);
-  const filename = `quittance-${periodMonthStr}.pdf`;
-  const stored = await storeFile(pdfBuffer, 'application/pdf', filename);
-
   // On capture les statuts permis pour le verrou optimiste — on n'autorise
   // pas la transition si une autre transaction a déjà basculé la ligne en
   // `paid` entre `getRentPeriodForOwner` et l'UPDATE.
   const allowedFromStatuses: RentPeriodStatusKey[] = ['draft', 'notice_sent'];
 
-  let updatedPeriod: RentPeriod;
-  try {
-    updatedPeriod = await db.transaction(async (tx) => {
-      const [doc] = await tx
-        .insert(documents)
-        .values({
-          leaseId: period.leaseId,
-          documentTypeKey: 'rent_receipt',
-          periodMonth: periodMonthStr,
-          filePath: stored.path,
-          fileSizeBytes: stored.sizeBytes,
-          mimeType: stored.mimeType,
-          originalFilename: stored.originalFilename,
-          statusKey: 'validated',
-          validatedAt: now,
-          validatedByUserId: userId,
-          uploadedByUserId: userId,
-          updatedAt: now,
-        })
-        .returning();
+  const [updatedPeriod] = await db
+    .update(rentPeriods)
+    .set({
+      statusKey: 'paid',
+      paidAt: now,
+      paidByUserId: userId,
+      updatedAt: now,
+    })
+    .where(and(eq(rentPeriods.id, id), inArray(rentPeriods.statusKey, allowedFromStatuses)))
+    .returning();
 
-      if (!doc) {
-        throw new Error('Échec de l’insertion du document');
-      }
-
-      // Drizzle ne supporte pas directement `inArray` dans un `.where`
-      // composite simple ici — on reconstruit via une OR sur les deux
-      // statuts attendus. Plus explicite et type-safe.
-      const [rp] = await tx
-        .update(rentPeriods)
-        .set({
-          statusKey: 'paid',
-          paidAt: now,
-          paidByUserId: userId,
-          receiptDocumentId: doc.id,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(rentPeriods.id, id),
-            // Verrou optimiste sur les statuts permis (`draft` ou
-            // `notice_sent`) — empêche le double-mark-paid via une race.
-            inArray(rentPeriods.statusKey, allowedFromStatuses),
-          ),
-        )
-        .returning();
-
-      if (!rp) {
-        throw new HTTPException(409, {
-          message: 'État de la période modifié entre-temps — réessayez',
-        });
-      }
-
-      return rp;
+  if (!updatedPeriod) {
+    throw new HTTPException(409, {
+      message: 'État de la période modifié entre-temps — réessayez',
     });
-  } catch (err) {
-    logger.warn(
-      { err, leaseId: period.leaseId, periodMonth: periodMonthStr, filePath: stored.path },
-      'rent-periods: mark-paid transaction failed, file kept on disk for debug',
-    );
-    throw err;
   }
-
-  // Email best-effort hors transaction.
-  const landlordName = landlordDisplayName(ctx.landlord);
-  const propertyAddress = buildPropertyAddress(ctx.property);
-  const periodLabel = formatMonth(periodMonthStr);
-  const totalPaidLabel = formatEur(period.totalDueCents);
-
-  await Promise.all(
-    ctx.tenantsWithEmail
-      .filter((t) => t.email && t.email.length > 0)
-      .map(async (t) => {
-        const { subject, html, text } = renderRentReceiptEmail({
-          recipientName: tenantDisplayName(t),
-          landlordName,
-          propertyAddress,
-          periodLabel,
-          totalPaidLabel,
-          appUrl: `${WEB_APP_BASE_URL}/rent-periods/${period.id}`,
-        });
-        const result = await sendEmail({
-          to: t.email,
-          subject,
-          html,
-          text,
-          attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
-        });
-        if (!result.delivered) {
-          logger.warn(
-            { tenantEmail: t.email, periodId: period.id },
-            'rent-periods: rent receipt email not delivered',
-          );
-        }
-      }),
-  );
 
   const tenantsList = await loadTenantSummaries(updatedPeriod.leaseId);
   return toPublicRentPeriod(updatedPeriod, tenantsList);
