@@ -36,35 +36,6 @@ export type RentAdjustment = {
   label?: string;
 };
 
-export type RentReceiptData = {
-  landlord: LandlordInfo;
-  tenants: TenantInfo[];
-  property: PropertyInfo;
-  /** Format 'YYYY-MM'. */
-  periodMonth: string;
-  baseRentCents: number;
-  baseChargesCents: number;
-  adjustments: RentAdjustment[];
-  totalDueCents: number;
-  /** ISO date 'YYYY-MM-DD'. */
-  paidAt: string;
-  generatedAt: Date;
-};
-
-export type RentNoticeData = {
-  landlord: LandlordInfo;
-  tenants: TenantInfo[];
-  property: PropertyInfo;
-  periodMonth: string;
-  baseRentCents: number;
-  baseChargesCents: number;
-  adjustments: RentAdjustment[];
-  totalDueCents: number;
-  /** ISO date 'YYYY-MM-DD'. */
-  dueDate: string;
-  generatedAt: Date;
-};
-
 // ---------------------------------------------------------------------------
 // Browser singleton
 // ---------------------------------------------------------------------------
@@ -195,28 +166,6 @@ export function formatMonth(periodMonth: string): string {
   const monthIdx = Number.parseInt(m[2] as string, 10) - 1;
   const monthName = MONTHS_FR[monthIdx] as string;
   return `${monthName} ${year}`;
-}
-
-// ---------------------------------------------------------------------------
-// Input validation
-// ---------------------------------------------------------------------------
-
-const PERIOD_MONTH_RE = /^\d{4}-(0[1-9]|1[012])$/;
-
-function assertCommonShape(d: {
-  tenants: TenantInfo[];
-  totalDueCents: number;
-  periodMonth: string;
-}): void {
-  if (!Array.isArray(d.tenants) || d.tenants.length < 1) {
-    throw new Error('pdf-renderer: at least one tenant is required');
-  }
-  if (typeof d.totalDueCents !== 'number' || d.totalDueCents < 0) {
-    throw new Error('pdf-renderer: totalDueCents must be >= 0');
-  }
-  if (!PERIOD_MONTH_RE.test(d.periodMonth)) {
-    throw new Error(`pdf-renderer: periodMonth must match YYYY-MM (got: ${d.periodMonth})`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -484,74 +433,8 @@ function wrapDocument(title: string, bodyHtml: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Templates
-// ---------------------------------------------------------------------------
-
-export function renderRentReceiptHtml(data: RentReceiptData): string {
-  const periodLabel = formatMonth(data.periodMonth);
-  const paidAtLabel = formatDate(data.paidAt);
-  const body = `
-    <section class="header">
-      ${landlordBlock(data.landlord)}
-      ${tenantsBlock(data.tenants, data.property)}
-    </section>
-
-    <section class="title-block">
-      <h1>Quittance de loyer</h1>
-      <div class="period">Période : ${esc(periodLabel)}</div>
-    </section>
-
-    ${amountsTable(data)}
-
-    <section class="mention">
-      Je soussigné(e) ${formatPerson(data.landlord)}, bailleur, déclare avoir reçu
-      la somme de <strong>${formatEur(data.totalDueCents)}</strong> au titre du loyer
-      et des charges de la période de ${esc(periodLabel)}, et en donne quittance au(x)
-      locataire(s), sous réserve de tous mes droits.<br/>
-      Pour acquit, le ${esc(paidAtLabel)}.
-    </section>
-
-    ${signatureBlock(data.landlord)}
-
-    ${footerHtml(data.generatedAt)}
-  `;
-  return wrapDocument('Quittance de loyer', body);
-}
-
-export function renderRentNoticeHtml(data: RentNoticeData): string {
-  const periodLabel = formatMonth(data.periodMonth);
-  const dueDateLabel = formatDate(data.dueDate);
-  const body = `
-    <section class="header">
-      ${landlordBlock(data.landlord)}
-      ${tenantsBlock(data.tenants, data.property)}
-    </section>
-
-    <section class="title-block">
-      <h1>Avis d'échéance</h1>
-      <div class="period">Période : ${esc(periodLabel)}</div>
-    </section>
-
-    ${amountsTable(data)}
-
-    <section class="mention">
-      Cet avis vous informe du montant dû au titre du loyer et des charges de la période
-      de ${esc(periodLabel)}.<br/>
-      <strong>À régler avant le ${esc(dueDateLabel)}</strong>${
-        data.landlord.iban ? ` — IBAN du bailleur : ${esc(data.landlord.iban)}` : ''
-      }.
-    </section>
-
-    ${signatureBlock(data.landlord)}
-
-    ${footerHtml(data.generatedAt)}
-  `;
-  return wrapDocument("Avis d'échéance", body);
-}
-
-// ---------------------------------------------------------------------------
-// Document de cycle : N quittances (mois payés) + 1 avis d'échéance (mois à
-// venir) avec solde antérieur, en un seul document / un seul email.
+// Templates — document de cycle : N quittances (mois payés) + 1 avis
+// d'échéance (mois à venir) avec solde antérieur, en un seul document.
 // ---------------------------------------------------------------------------
 
 export type CycleReceiptSection = {
@@ -709,38 +592,6 @@ async function htmlToPdfBuffer(html: string): Promise<Buffer> {
       logger.warn({ err }, 'pdf-renderer: page.close() failed');
     });
   }
-}
-
-export async function renderRentReceiptPdf(data: RentReceiptData): Promise<Buffer> {
-  assertCommonShape(data);
-  const start = Date.now();
-  logger.info(
-    { periodMonth: data.periodMonth, tenants: data.tenants.length },
-    'pdf-renderer: rent receipt — start',
-  );
-  const html = renderRentReceiptHtml(data);
-  const buf = await htmlToPdfBuffer(html);
-  logger.info(
-    { periodMonth: data.periodMonth, sizeBytes: buf.byteLength, durationMs: Date.now() - start },
-    'pdf-renderer: rent receipt — done',
-  );
-  return buf;
-}
-
-export async function renderRentNoticePdf(data: RentNoticeData): Promise<Buffer> {
-  assertCommonShape(data);
-  const start = Date.now();
-  logger.info(
-    { periodMonth: data.periodMonth, tenants: data.tenants.length },
-    'pdf-renderer: rent notice — start',
-  );
-  const html = renderRentNoticeHtml(data);
-  const buf = await htmlToPdfBuffer(html);
-  logger.info(
-    { periodMonth: data.periodMonth, sizeBytes: buf.byteLength, durationMs: Date.now() - start },
-    'pdf-renderer: rent notice — done',
-  );
-  return buf;
 }
 
 export async function renderCycleDocumentPdf(data: CycleDocumentData): Promise<Buffer> {

@@ -9,23 +9,15 @@ import { properties } from '../../db/schema/properties.js';
 import type { Adjustment, RentPeriod } from '../../db/schema/rent-periods.js';
 import { rentPeriods } from '../../db/schema/rent-periods.js';
 import { tenants } from '../../db/schema/tenants.js';
-import {
-  renderCancellationEmail,
-  renderCycleEmail,
-  renderRentNoticeEmail,
-} from '../../lib/email-templates.js';
+import { renderCancellationEmail, renderCycleEmail } from '../../lib/email-templates.js';
 import { logger } from '../../lib/logger.js';
 import { sendEmail } from '../../lib/mailer.js';
 import {
   type LandlordInfo,
   type PropertyInfo,
-  type RentNoticeData,
   type TenantInfo,
-  formatDate,
-  formatEur,
   formatMonth,
   renderCycleDocumentPdf,
-  renderRentNoticePdf,
 } from '../../lib/pdf-renderer.js';
 import { readFileBuffer, storeFile } from '../../lib/storage.js';
 import { type CyclePeriodRow, assembleCycleDocument } from './cycle-document.js';
@@ -382,163 +374,6 @@ export async function updateAdjustments(
 
   const tenantsList = await loadTenantSummaries(updated.leaseId);
   return toPublicRentPeriod(updated, tenantsList);
-}
-
-// ---------------------------------------------------------------------------
-// POST /:id/send-notice
-// ---------------------------------------------------------------------------
-
-/**
- * Émet l'avis d'échéance d'une période :
- *  1) génère le PDF via puppeteer
- *  2) stocke le fichier
- *  3) INSERT une ligne `documents` (type `rent_notice`)
- *  4) UPDATE la période → status='notice_sent', noticeSentAt, noticeDocumentId
- *
- * Les opérations 1+2 sont HORS transaction (génération PDF onéreuse, stockage
- * disque). Les opérations 3+4 sont DANS la transaction pour garantir que les
- * deux écritures DB sont cohérentes (jamais de période avec un document_id
- * pointant vers une ligne fantôme, jamais de document orphelin côté DB).
- *
- * L'envoi des emails est ENSUITE, hors transaction, best-effort : un échec
- * SMTP ne doit pas faire rollback de l'état DB (le PDF est déjà stocké et
- * référencé — l'utilisateur pourra renvoyer manuellement).
- */
-export async function sendNotice(id: string, userId: string): Promise<RentPeriodPublic> {
-  const period = await getRentPeriodForOwner(id, userId);
-
-  if (period.statusKey !== 'draft') {
-    throw new HTTPException(409, {
-      message: 'L’avis ne peut être envoyé qu’à partir d’une période en statut "draft"',
-    });
-  }
-
-  assertNonNegativeTotal(period.totalDueCents);
-
-  const ctx = await loadLeaseContextForPdf(period.leaseId);
-  const periodMonthStr = firstDayToPeriodMonth(period.periodMonth);
-
-  const noticeData: RentNoticeData = {
-    landlord: ctx.landlord,
-    tenants: ctx.tenants,
-    property: ctx.property,
-    periodMonth: periodMonthStr,
-    baseRentCents: period.baseRentCents,
-    baseChargesCents: period.baseChargesCents,
-    adjustments: period.adjustments.map((a) => ({
-      labelKey: a.labelKey ?? a.type,
-      amountCents: a.amountCents,
-      label: a.label,
-    })),
-    totalDueCents: period.totalDueCents,
-    dueDate: period.dueDate,
-    generatedAt: new Date(),
-  };
-
-  // PDF generation HORS transaction (peut prendre 200–500 ms).
-  const pdfBuffer = await renderRentNoticePdf(noticeData);
-  const filename = `avis-echeance-${periodMonthStr}.pdf`;
-  const stored = await storeFile(pdfBuffer, 'application/pdf', filename);
-
-  let updatedPeriod: RentPeriod;
-  try {
-    updatedPeriod = await db.transaction(async (tx) => {
-      const now = new Date();
-
-      const [doc] = await tx
-        .insert(documents)
-        .values({
-          leaseId: period.leaseId,
-          documentTypeKey: 'rent_notice',
-          periodMonth: periodMonthStr,
-          filePath: stored.path,
-          fileSizeBytes: stored.sizeBytes,
-          mimeType: stored.mimeType,
-          originalFilename: stored.originalFilename,
-          statusKey: 'validated',
-          validatedAt: now,
-          validatedByUserId: userId,
-          uploadedByUserId: userId,
-          updatedAt: now,
-        })
-        .returning();
-
-      if (!doc) {
-        throw new Error('Échec de l’insertion du document');
-      }
-
-      const [rp] = await tx
-        .update(rentPeriods)
-        // Verrou optimiste sur statusKey : si une autre transaction a déjà
-        // basculé la période (double-clic, race condition), on retombera
-        // sur 0 ligne mise à jour → on jette et rollback.
-        .set({
-          statusKey: 'notice_sent',
-          noticeSentAt: now,
-          noticeDocumentId: doc.id,
-          updatedAt: now,
-        })
-        .where(and(eq(rentPeriods.id, id), eq(rentPeriods.statusKey, 'draft')))
-        .returning();
-
-      if (!rp) {
-        throw new HTTPException(409, {
-          message: 'État de la période modifié entre-temps — réessayez',
-        });
-      }
-
-      return rp;
-    });
-  } catch (err) {
-    // Compensation best-effort : on ne supprime PAS le PDF stocké volontairement —
-    // on garde le binaire pour permettre le debug post-mortem (volume non saturé
-    // par un échec ponctuel, et `documents` n'a pas de ligne donc pas
-    // d'orphelin DB). Mais on logue clairement pour traçabilité.
-    logger.warn(
-      { err, leaseId: period.leaseId, periodMonth: periodMonthStr, filePath: stored.path },
-      'rent-periods: send-notice transaction failed, file kept on disk for debug',
-    );
-    throw err;
-  }
-
-  // Envoi des emails — best-effort, hors transaction.
-  const landlordName = landlordDisplayName(ctx.landlord);
-  const propertyAddress = buildPropertyAddress(ctx.property);
-  const periodLabel = formatMonth(periodMonthStr);
-  const totalDueLabel = formatEur(period.totalDueCents);
-  const dueDateLabel = formatDate(period.dueDate);
-
-  await Promise.all(
-    ctx.tenantsWithEmail
-      .filter((t) => t.email && t.email.length > 0)
-      .map(async (t) => {
-        const { subject, html, text } = renderRentNoticeEmail({
-          recipientName: tenantDisplayName(t),
-          landlordName,
-          propertyAddress,
-          periodLabel,
-          totalDueLabel,
-          dueDateLabel,
-          appUrl: `${WEB_APP_BASE_URL}/rent-periods/${period.id}`,
-        });
-        const result = await sendEmail({
-          to: t.email,
-          subject,
-          html,
-          text,
-          attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
-        });
-        if (!result.delivered) {
-          logger.warn(
-            { tenantEmail: t.email, periodId: period.id },
-            'rent-periods: rent notice email not delivered',
-          );
-        }
-      }),
-  );
-
-  const tenantsList = await loadTenantSummaries(updatedPeriod.leaseId);
-  return toPublicRentPeriod(updatedPeriod, tenantsList);
 }
 
 // ---------------------------------------------------------------------------

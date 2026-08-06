@@ -17,7 +17,6 @@ import {
   listForOwner,
   markPaid,
   markUnpaid,
-  sendNotice,
   updateAdjustments,
 } from './rent-periods.service.js';
 
@@ -93,38 +92,6 @@ const updateRoute = createRoute({
   responses: {
     200: {
       description: 'Période mise à jour',
-      content: { 'application/json': { schema: RentPeriodSchema } },
-    },
-    401: {
-      description: 'Non authentifié',
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-    },
-    403: {
-      description: 'Accès refusé',
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-    },
-    404: {
-      description: 'Période introuvable',
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-    },
-    409: {
-      description: 'État incompatible (statut différent de "draft")',
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-    },
-  },
-});
-
-const sendNoticeRoute = createRoute({
-  method: 'post',
-  path: '/{id}/send-notice',
-  tags: [TAG],
-  summary: 'Émettre l’avis d’échéance et l’envoyer aux locataires',
-  request: {
-    params: RentPeriodIdParamSchema,
-  },
-  responses: {
-    200: {
-      description: 'Avis émis',
       content: { 'application/json': { schema: RentPeriodSchema } },
     },
     401: {
@@ -292,19 +259,6 @@ rentPeriodsRoutes.openapi(updateRoute, async (c) => {
     entityType: 'rent_period',
     entityId: id,
     payload: { adjustmentsCount: data.adjustments.length },
-  });
-  return c.json(row, 200);
-});
-
-rentPeriodsRoutes.openapi(sendNoticeRoute, async (c) => {
-  const user = c.get('user')!;
-  const { id } = c.req.valid('param');
-  const row = await sendNotice(id, user.id);
-  await recordUserAudit(c, user.id, {
-    action: 'rent_period.send_notice',
-    entityType: 'rent_period',
-    entityId: row.id,
-    payload: { periodMonth: row.periodMonth, leaseId: row.leaseId },
   });
   return c.json(row, 200);
 });
