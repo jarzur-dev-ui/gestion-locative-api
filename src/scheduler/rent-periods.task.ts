@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import { leases } from '../db/schema/leases.js';
 import { properties } from '../db/schema/properties.js';
 import { rentPeriods } from '../db/schema/rent-periods.js';
-import { recordSchedulerAudit } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import {
   computeDueDate,
@@ -12,7 +11,7 @@ import {
   noticeCutoffDate,
   periodMonthToFirstDay,
 } from '../modules/rent-periods/period-generation.js';
-import { sendNotice } from '../modules/rent-periods/rent-periods.service.js';
+import { sendLeaseCycle } from '../modules/rent-periods/rent-periods.service.js';
 
 // Avis envoyé 3 jours avant l'échéance (paiement dans le mois — cf. cadence
 // façon agence : la quittance du mois précédent + l'avis du mois à venir).
@@ -20,14 +19,14 @@ const NOTICE_LEAD_DAYS = 3;
 
 export type DailyTaskResult = {
   periodsCreated: number;
-  noticesSent: number;
-  noticesFailed: number;
+  cyclesDelivered: number;
+  cyclesFailed: number;
 };
 
 export async function runDailyRentPeriodTasks(): Promise<DailyTaskResult> {
   const periodsCreated = await createUpcomingPeriods();
-  const { sent, failed } = await sendDueNotices();
-  return { periodsCreated, noticesSent: sent, noticesFailed: failed };
+  const { delivered, failed } = await sendDueCycles();
+  return { periodsCreated, cyclesDelivered: delivered, cyclesFailed: failed };
 }
 
 /**
@@ -81,16 +80,17 @@ async function createUpcomingPeriods(): Promise<number> {
 }
 
 /**
- * Trouve toutes les périodes draft dont la due_date est dans <= 10 jours
- * et n'ont pas encore d'avis envoyé, puis envoie l'avis pour chacune.
+ * Trouve tous les baux ayant une période draft dont la due_date est <= J+3
+ * et sans avis envoyé, puis envoie le document de cycle (quittances + avis)
+ * une fois par bail.
  */
-async function sendDueNotices(): Promise<{ sent: number; failed: number }> {
+async function sendDueCycles(): Promise<{ delivered: number; failed: number }> {
   const cutoffDate = noticeCutoffDate(new Date(), NOTICE_LEAD_DAYS);
 
   // Lookup periods with their lease owner — the scheduler acts "as" the landlord
   // for each period so the existing ACL passes naturally.
   const dueDrafts = await db
-    .select({ id: rentPeriods.id, ownerUserId: properties.ownerUserId })
+    .select({ leaseId: rentPeriods.leaseId, ownerUserId: properties.ownerUserId })
     .from(rentPeriods)
     .innerJoin(leases, eq(leases.id, rentPeriods.leaseId))
     .innerJoin(properties, eq(properties.id, leases.propertyId))
@@ -102,30 +102,29 @@ async function sendDueNotices(): Promise<{ sent: number; failed: number }> {
       ),
     );
 
-  let sent = 0;
+  // Sécurité : normalement ≤ 1 période draft due par bail, mais on déduplique
+  // pour ne pas envoyer le cycle deux fois au même bail.
+  const ownerIdByLeaseId = new Map<string, string>();
+  for (const { leaseId, ownerUserId } of dueDrafts) {
+    ownerIdByLeaseId.set(leaseId, ownerUserId);
+  }
+
+  let delivered = 0;
   let failed = 0;
-  for (const { id, ownerUserId } of dueDrafts) {
+  for (const [leaseId, ownerUserId] of ownerIdByLeaseId) {
     try {
-      await sendNotice(id, ownerUserId);
-      sent += 1;
-      // Audit non-bloquant : le helper avale toute exception (cf. recordSchedulerAudit).
-      // `automated: true` permet de distinguer côté investigation un envoi
-      // automatique d'un envoi manuel (lui audité par `rent_period.send_notice`
-      // côté route avec `actorType = user`).
-      await recordSchedulerAudit({
-        action: 'rent_period.send_notice',
-        entityType: 'rent_period',
-        entityId: id,
-        payload: { automated: true },
-      });
+      const result = await sendLeaseCycle(leaseId, ownerUserId, new Date(), NOTICE_LEAD_DAYS);
+      if (result.delivered) {
+        delivered += 1;
+      }
     } catch (err) {
       failed += 1;
-      logger.error({ err, rentPeriodId: id }, 'scheduler: send-notice failed');
+      logger.error({ err, leaseId }, 'scheduler: send-cycle failed');
     }
   }
 
-  if (sent > 0 || failed > 0) {
-    logger.info({ sent, failed, cutoffDate }, 'scheduler: notices processed');
+  if (delivered > 0 || failed > 0) {
+    logger.info({ delivered, failed, cutoffDate }, 'scheduler: cycles processed');
   }
-  return { sent, failed };
+  return { delivered, failed };
 }

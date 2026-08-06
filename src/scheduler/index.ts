@@ -11,7 +11,7 @@ let scheduledTasks: cron.ScheduledTask[] = [];
 export function startScheduler(): void {
   // Tous les jours à 08:00 Europe/Paris
   // - Crée les rent_periods du mois prochain pour chaque bail actif (idempotent)
-  // - Envoie les avis d'échéance pour les périodes draft dont due_date <= J+10
+  // - Envoie le document de cycle (quittances + avis) par bail, 3 jours avant l'échéance
   const dailyTask = cron.schedule(
     '0 8 * * *',
     async () => {
