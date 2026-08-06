@@ -9,11 +9,14 @@ import {
   computeDueDate,
   computeTotalDueCents,
   getNextPeriodMonth,
+  noticeCutoffDate,
   periodMonthToFirstDay,
 } from '../modules/rent-periods/period-generation.js';
 import { sendNotice } from '../modules/rent-periods/rent-periods.service.js';
 
-const NOTICE_LEAD_DAYS = 10;
+// Avis envoyé 3 jours avant l'échéance (paiement dans le mois — cf. cadence
+// façon agence : la quittance du mois précédent + l'avis du mois à venir).
+const NOTICE_LEAD_DAYS = 3;
 
 export type DailyTaskResult = {
   periodsCreated: number;
@@ -82,11 +85,7 @@ async function createUpcomingPeriods(): Promise<number> {
  * et n'ont pas encore d'avis envoyé, puis envoie l'avis pour chacune.
  */
 async function sendDueNotices(): Promise<{ sent: number; failed: number }> {
-  const today = new Date();
-  const cutoff = new Date(today);
-  cutoff.setDate(cutoff.getDate() + NOTICE_LEAD_DAYS);
-  // Date column comparison : format YYYY-MM-DD
-  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  const cutoffDate = noticeCutoffDate(new Date(), NOTICE_LEAD_DAYS);
 
   // Lookup periods with their lease owner — the scheduler acts "as" the landlord
   // for each period so the existing ACL passes naturally.

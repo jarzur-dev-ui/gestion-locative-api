@@ -88,6 +88,19 @@ export function getNextPeriodMonth(now: Date = new Date()): string {
 }
 
 /**
+ * Date de coupure d'envoi des avis = aujourd'hui + `leadDays` (UTC, 'YYYY-MM-DD').
+ * Une période est notifiée dès que sa `due_date <=` cette coupure, soit
+ * `leadDays` jours avant l'échéance. Tout en UTC pour éviter un décalage d'un
+ * jour près de minuit (l'ancien code mélangeait heure locale et `toISOString`).
+ */
+export function noticeCutoffDate(now: Date, leadDays: number): string {
+  const cutoff = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + leadDays),
+  );
+  return cutoff.toISOString().slice(0, 10);
+}
+
+/**
  * Convertit 'YYYY-MM' → 'YYYY-MM-01'.
  *
  * Utilisé pour stocker `period_month` dans la colonne `date` (Postgres exige
