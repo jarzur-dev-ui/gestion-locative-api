@@ -119,28 +119,41 @@ async function getAccessibleScope(user: User): Promise<AccessibleScope> {
 
   if (user.role === 'tenant') {
     const rows = await db
-      .select({ leaseId: leaseTenants.leaseId, propertyId: leases.propertyId })
+      .select({
+        leaseId: leaseTenants.leaseId,
+        propertyId: leases.propertyId,
+        statusKey: leases.statusKey,
+      })
       .from(leaseTenants)
       .innerJoin(tenants, eq(tenants.id, leaseTenants.tenantId))
       .innerJoin(leases, eq(leases.id, leaseTenants.leaseId))
       .where(eq(tenants.userId, user.id));
 
     const leaseIds = Array.from(new Set(rows.map((r) => r.leaseId)));
-    const propertyIds = Array.from(new Set(rows.map((r) => r.propertyId)));
+    const propertyIds = propertyIdsOfOngoingLeases(rows);
     return { leaseIds, propertyIds };
   }
 
   // guarantor
   const rows = await db
-    .select({ leaseId: leaseGuarantors.leaseId, propertyId: leases.propertyId })
+    .select({
+      leaseId: leaseGuarantors.leaseId,
+      propertyId: leases.propertyId,
+      statusKey: leases.statusKey,
+    })
     .from(leaseGuarantors)
     .innerJoin(guarantors, eq(guarantors.id, leaseGuarantors.guarantorId))
     .innerJoin(leases, eq(leases.id, leaseGuarantors.leaseId))
     .where(eq(guarantors.userId, user.id));
 
   const leaseIds = Array.from(new Set(rows.map((r) => r.leaseId)));
-  const propertyIds = Array.from(new Set(rows.map((r) => r.propertyId)));
+  const propertyIds = propertyIdsOfOngoingLeases(rows);
   return { leaseIds, propertyIds };
+}
+
+/** Un bail terminé garde ses propres pièces, mais plus les documents du bien (DPE, règlement…). */
+function propertyIdsOfOngoingLeases(rows: { propertyId: string; statusKey: string }[]): string[] {
+  return Array.from(new Set(rows.filter((r) => r.statusKey !== 'ended').map((r) => r.propertyId)));
 }
 
 /**
@@ -229,7 +242,9 @@ export async function assertDocumentAccessibleByUser(
 
   const scope = await getAccessibleScope(user);
   const matchesLease = doc.leaseId !== null && scope.leaseIds.includes(doc.leaseId);
-  const matchesProperty = doc.propertyId !== null && scope.propertyIds.includes(doc.propertyId);
+  // Un document rattaché à un bail n'est visible que des parties à ce bail, même s'il porte aussi le bien.
+  const matchesProperty =
+    doc.leaseId === null && doc.propertyId !== null && scope.propertyIds.includes(doc.propertyId);
 
   if (!matchesLease && !matchesProperty) {
     // 404 plutôt que 403 : on ne distingue pas "inexistant" de "non accessible".
@@ -359,7 +374,11 @@ export async function listForUser(user: User, filters: ListFilters): Promise<Doc
     aclClauses.push(inArray(documents.leaseId, scope.leaseIds));
   }
   if (scope.propertyIds.length > 0) {
-    aclClauses.push(inArray(documents.propertyId, scope.propertyIds));
+    const propertyLevelOnly = and(
+      isNull(documents.leaseId),
+      inArray(documents.propertyId, scope.propertyIds),
+    );
+    if (propertyLevelOnly) aclClauses.push(propertyLevelOnly);
   }
 
   // `or` peut renvoyer undefined si on lui passe un seul élément, on force
@@ -434,6 +453,16 @@ export async function uploadDocument(user: User, input: UploadInput): Promise<Do
     const ok = await userOwnsProperty(user, input.propertyId);
     if (!ok) {
       throw new HTTPException(403, { message: 'Accès refusé à la propriété cible' });
+    }
+  }
+  if (input.leaseId && input.propertyId) {
+    const [lease] = await db
+      .select({ propertyId: leases.propertyId })
+      .from(leases)
+      .where(eq(leases.id, input.leaseId))
+      .limit(1);
+    if (lease?.propertyId !== input.propertyId) {
+      throw new HTTPException(400, { message: "Le bail n'appartient pas à ce bien" });
     }
   }
 

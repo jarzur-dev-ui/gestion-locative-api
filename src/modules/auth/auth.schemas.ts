@@ -12,7 +12,7 @@ export const UserPublicSchema = z
 export const LoginRequestSchema = z
   .object({
     email: z.string().email(),
-    password: z.string().min(1),
+    password: z.string().min(1).max(256),
   })
   .openapi('LoginRequest');
 
@@ -37,7 +37,7 @@ export const ForgotPasswordRequestSchema = z
 export const ResetPasswordRequestSchema = z
   .object({
     token: z.string().min(20),
-    password: z.string().min(8),
+    password: z.string().min(8).max(256),
   })
   .openapi('ResetPasswordRequest');
 

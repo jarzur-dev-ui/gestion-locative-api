@@ -4,7 +4,7 @@ import { db } from '../../db/client.js';
 import type { User } from '../../db/schema/users.js';
 import { users } from '../../db/schema/users.js';
 import type { UserPublic } from './auth.schemas.js';
-import { verifyPassword } from './password.js';
+import { verifyPassword, verifyPasswordAgainstDummy } from './password.js';
 
 export async function authenticateByEmailAndPassword(
   email: string,
@@ -17,7 +17,8 @@ export async function authenticateByEmailAndPassword(
     .limit(1);
 
   if (!user || !user.passwordHash) {
-    // Même message que mot de passe invalide pour ne pas révéler si l'email existe.
+    // Même message et même coût argon2 que mot de passe invalide pour ne pas révéler si l'email existe.
+    await verifyPasswordAgainstDummy(password);
     throw new HTTPException(401, { message: 'Identifiants invalides' });
   }
 

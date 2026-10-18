@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { recordUserAudit } from '../../lib/audit.js';
+import { logger } from '../../lib/logger.js';
 import type { AppEnv } from '../../types/app-env.js';
 import {
   ErrorResponseSchema,
@@ -150,7 +151,10 @@ authRoutes.openapi(forgotPasswordRoute, async (c) => {
   // ici nécessiterait de résoudre un userId, ce qui révélerait (par sa présence ou
   // son absence) si l'email correspond à un compte. On se limite donc à l'audit
   // `password.reset` côté /reset-password, où le userId est connu sans fuite.
-  await requestPasswordReset(email);
+  // Non attendu : l'envoi SMTP ne doit pas rendre la réponse plus lente pour un compte existant.
+  void requestPasswordReset(email).catch((err) =>
+    logger.error({ err }, 'password reset request failed'),
+  );
   return c.body(null, 204);
 });
 

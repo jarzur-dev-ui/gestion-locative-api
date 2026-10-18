@@ -11,7 +11,7 @@ export const CreateInvitationSchema = z
 export const AcceptInvitationSchema = z
   .object({
     token: z.string().min(20),
-    password: z.string().min(8),
+    password: z.string().min(8).max(256),
   })
   .openapi('AcceptInvitation');
 

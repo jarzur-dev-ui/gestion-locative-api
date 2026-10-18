@@ -51,6 +51,19 @@ export async function createInvitation(opts: {
   const target = await fetchTargetForCreator(opts);
   const inviterName = await fetchInviterDisplayName(opts.currentUserId);
 
+  // Une seule invitation active par cible : renvoyer (ex. après correction d'email)
+  // invalide les précédentes, sinon l'ancien destinataire pourrait encore l'accepter.
+  await db
+    .update(invitations)
+    .set({ usedAt: new Date() })
+    .where(
+      and(
+        eq(invitations.targetTypeKey, opts.targetType),
+        eq(invitations.targetId, opts.targetId),
+        isNull(invitations.usedAt),
+      ),
+    );
+
   const token = generateInvitationToken();
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
@@ -336,21 +349,25 @@ export async function acceptInvitation(opts: {
       const updated = await tx
         .update(tenants)
         .set({ userId: user.id, updatedAt: new Date() })
-        .where(eq(tenants.id, invitation.targetId))
+        .where(and(eq(tenants.id, invitation.targetId), isNull(tenants.userId)))
         .returning({ id: tenants.id });
 
       if (updated.length === 0) {
-        throw new HTTPException(404, { message: 'Locataire cible introuvable' });
+        throw new HTTPException(409, {
+          message: 'Locataire cible introuvable ou déjà lié à un compte',
+        });
       }
     } else {
       const updated = await tx
         .update(guarantors)
         .set({ userId: user.id, updatedAt: new Date() })
-        .where(eq(guarantors.id, invitation.targetId))
+        .where(and(eq(guarantors.id, invitation.targetId), isNull(guarantors.userId)))
         .returning({ id: guarantors.id });
 
       if (updated.length === 0) {
-        throw new HTTPException(404, { message: 'Garant cible introuvable' });
+        throw new HTTPException(409, {
+          message: 'Garant cible introuvable ou déjà lié à un compte',
+        });
       }
     }
 

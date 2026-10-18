@@ -1,9 +1,12 @@
 import { serve } from '@hono/node-server';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { globalRateLimiter, sensitiveRateLimiter } from './lib/rate-limit.js';
+import { MAX_UPLOAD_BYTES } from './lib/storage.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { sessionMiddleware } from './middleware/session.js';
 import { auditLogsRoutes } from './modules/audit-logs/audit-logs.routes.js';
@@ -27,6 +30,21 @@ import type { AppEnv } from './types/app-env.js';
 const app = new OpenAPIHono<AppEnv>();
 
 app.use('*', cors({ origin: env.CORS_ORIGIN, credentials: true }));
+// `same-site` : le front (sous-domaine voisin) doit pouvoir charger les ressources de l'API.
+app.use('*', secureHeaders({ crossOriginResourcePolicy: 'same-site' }));
+
+// Taille de corps plafonnée avant parsing : sans ça un upload de plusieurs Go est bufferisé en mémoire.
+const MB = 1024 * 1024;
+const limitedBody = (maxSize: number) =>
+  bodyLimit({ maxSize, onError: (c) => c.json({ message: 'Requête trop volumineuse' }, 413) });
+const uploadBodyLimit = limitedBody(MAX_UPLOAD_BYTES + MB);
+const migrationBodyLimit = limitedBody(5 * MB);
+const defaultBodyLimit = limitedBody(MB);
+app.use('*', (c, next) => {
+  if (c.req.path === '/api/documents') return uploadBodyLimit(c, next);
+  if (c.req.path.startsWith('/api/migration')) return migrationBodyLimit(c, next);
+  return defaultBodyLimit(c, next);
+});
 
 // Rate limiting — voir src/lib/rate-limit.ts pour le détail des limites et la
 // résolution de l'IP cliente (entrée X-Forwarded-For ajoutée par le proxy de
@@ -92,15 +110,18 @@ app.route('/api/me', meRoutes);
 app.route('/api/migration', migrationRoutes);
 app.route('/share', sharePublicRoutes);
 
-app.doc('/openapi.json', {
-  openapi: '3.0.0',
-  info: {
-    title: 'gestion-locative API',
-    version: '0.0.0',
-    description: 'API de gestion locative — baux, locataires, garants, quittances, documents',
-  },
-  servers: [{ url: `http://localhost:${env.PORT}`, description: 'Local' }],
-});
+// La spec liste toutes les routes : utile en dev pour `pnpm gen:api`, inutile (et de la reconnaissance offerte) en prod.
+if (env.NODE_ENV !== 'production') {
+  app.doc('/openapi.json', {
+    openapi: '3.0.0',
+    info: {
+      title: 'gestion-locative API',
+      version: '0.0.0',
+      description: 'API de gestion locative — baux, locataires, garants, quittances, documents',
+    },
+    servers: [{ url: `http://localhost:${env.PORT}`, description: 'Local' }],
+  });
+}
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   logger.info(`🚀 API démarrée sur http://localhost:${info.port}`);
