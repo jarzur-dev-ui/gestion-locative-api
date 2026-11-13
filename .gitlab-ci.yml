@@ -1,5 +1,5 @@
 include:
-  - component: $CI_SERVER_FQDN/infrajo/ci/node-mr@1.0.1
+  - component: $CI_SERVER_FQDN/infrajo/ci/node-mr@1.0.2
     inputs:
       lint: pnpm lint
       typecheck: pnpm typecheck
@@ -8,4 +8,4 @@ include:
       test_env: |
         DATABASE_URL=postgres://user:pass@localhost:5432/test
         CORS_ORIGIN=http://localhost:5173
-  - component: $CI_SERVER_FQDN/infrajo/ci/mr-bot@1.0.1
+  - component: $CI_SERVER_FQDN/infrajo/ci/mr-bot@1.0.2
