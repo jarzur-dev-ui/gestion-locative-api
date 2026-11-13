@@ -1,0 +1,11 @@
+include:
+  - component: $CI_SERVER_FQDN/infrajo/ci/node-mr@1.0.1
+    inputs:
+      lint: pnpm lint
+      typecheck: pnpm typecheck
+      test: pnpm vitest run
+      build: pnpm build
+      test_env: |
+        DATABASE_URL=postgres://user:pass@localhost:5432/test
+        CORS_ORIGIN=http://localhost:5173
+  - component: $CI_SERVER_FQDN/infrajo/ci/mr-bot@1.0.1
